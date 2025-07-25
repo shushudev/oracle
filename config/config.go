@@ -5,10 +5,10 @@ var (
 	KafkaBrokers = []string{"Kafka00Service:9092"}
 
 	// Kafka 토픽 Consumer
-	TopicDeviceIdToAddress = "device-address-topic"
+	TopicDeviceIdToAddressRequest = "device-address-request-topic"
 	// Kafka Topic Producer
-	TopicDeviceIdResponse = "device-address-response"
-	TopicVoteMember       = "user-count-topic"
+	TopicDeviceIdToAddress = "device-address-topic"
+	TopicVoteMember        = "user-count-topic"
 
 	// Kafka Group
 	GroupVote              = "vote-member-group"

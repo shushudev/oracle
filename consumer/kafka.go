@@ -2,17 +2,18 @@ package consumer
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"time"
-	"database/sql"
+
+	"oracle/config"
 
 	"github.com/segmentio/kafka-go"
-	"oracle/config"
 )
 
 func StartMappingConsumer(db *sql.DB, writer *kafka.Writer) {
 	brokers := config.KafkaBrokers
-	topic := config.TopicDeviceIdToAddress
+	topic := config.TopicDeviceIdToAddressRequest
 	groupID := config.GroupDeviceIdToAddress
 
 	r := kafka.NewReader(kafka.ReaderConfig{

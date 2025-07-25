@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	api "oracle/connect"
+	"oracle/consumer"
 	"oracle/db"
 	"oracle/producer"
 )
@@ -16,7 +17,7 @@ func enableCORS(w http.ResponseWriter) {
 
 func main() {
 	database := db.ConnectDB()
-	//mappingWriter := producer.NewMappingWriter()
+	mappingWriter := producer.NewMappingWriter()
 	voteWriter := producer.NewVoteMemberWriter()
 
 	//	go consumer.StartMappingConsumer(database, mappingWriter)
@@ -30,6 +31,8 @@ func main() {
 		}
 		api.ConnectHandler(database, voteWriter)(w, r)
 	})
+
+	go consumer.StartMappingConsumer(database, mappingWriter)
 
 	log.Println("Server running on :3001")
 	log.Fatal(http.ListenAndServe(":3001", nil))

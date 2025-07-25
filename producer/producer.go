@@ -10,7 +10,7 @@ import (
 func NewMappingWriter() *kafka.Writer {
 	return &kafka.Writer{
 		Addr:     kafka.TCP(config.KafkaBrokers...),
-		Topic:    config.TopicDeviceIdResponse,
+		Topic:    config.TopicDeviceIdToAddress,
 		Balancer: &kafka.LeastBytes{},
 	}
 }
