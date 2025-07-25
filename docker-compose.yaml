@@ -1,0 +1,20 @@
+services:
+  oracle-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: oracleApp
+    ports: 
+      - "3001:3001"
+    networks:
+      - kafka_kafka_network
+    environment:
+      - POSTGRES_HOST=postgres 
+      - POSTGRES_DB=user_info
+      - POSTGRES_USER=capstone2
+      - POSTGRES_PASSWORD=block1234
+
+networks:
+  kafka_kafka_network:
+    external: true
+
