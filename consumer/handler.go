@@ -1,18 +1,18 @@
 package consumer
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"log"
 	"math"
 	"oracle/model"
-	"context"
-	"database/sql"
+
 	"github.com/segmentio/kafka-go"
 )
 
 func fetchExpectedIrradiance(lat, lon float64, timestamp string) float64 {
-	// 외부 API 연동 가능 (NASA 등)
-	return 900.0
+	return 900.0 // NASA API 연동 가능
 }
 
 func HandleMessage(msg []byte) {
@@ -36,12 +36,23 @@ func HandleMessage(msg []byte) {
 }
 
 type MappingRequest struct {
-	DeviceID string `json:"device_id"`
+	DeviceID string `json:"device_id"` // inverter_id 의미
 }
 
 type MappingResponse struct {
-	DeviceID string `json:"device_id"`
-	Address  string `json:"address"`
+	InverterID string `json:"inverter_id"`
+	Address    string `json:"address"`
+}
+
+// DB에서 address 조회
+func LookupAddressFromDB(db *sql.DB, inverterID string) string {
+	var address string
+	err := db.QueryRow("SELECT address FROM userData WHERE inverter_id = $1", inverterID).Scan(&address)
+	if err != nil {
+		log.Printf("[Mapping] DB query error for inverter_id=%s: %v", inverterID, err)
+		return ""
+	}
+	return address
 }
 
 func HandleMappingRequest(msg []byte, db *sql.DB, writer *kafka.Writer) {
@@ -51,23 +62,20 @@ func HandleMappingRequest(msg []byte, db *sql.DB, writer *kafka.Writer) {
 		return
 	}
 
-	// DB 쿼리
-	var address string
-	err := db.QueryRow("SELECT address FROM device_mapping WHERE device_id = $1", req.DeviceID).Scan(&address)
-	if err != nil {
-		log.Printf("[Mapping] DB query error for device_id=%s: %v\n", req.DeviceID, err)
+	address := LookupAddressFromDB(db, req.DeviceID)
+	if address == "" {
+		log.Printf("[Mapping] No address found for inverter_id=%s", req.DeviceID)
 		return
 	}
 
-	// 응답 메시지 구성
 	resp := MappingResponse{
-		DeviceID: req.DeviceID,
-		Address:  address,
+		InverterID: req.DeviceID,
+		Address:    address,
 	}
+
 	respBytes, _ := json.Marshal(resp)
 
-	// Kafka로 응답 발행
-	err = writer.WriteMessages(context.Background(), kafka.Message{
+	err := writer.WriteMessages(context.Background(), kafka.Message{
 		Key:   []byte(req.DeviceID),
 		Value: respBytes,
 	})
@@ -76,5 +84,5 @@ func HandleMappingRequest(msg []byte, db *sql.DB, writer *kafka.Writer) {
 		return
 	}
 
-	log.Printf("[Mapping] DeviceID %s mapped to address %s", req.DeviceID, address)
+	log.Printf("[Mapping] inverter_id=%s → address=%s", req.DeviceID, address)
 }

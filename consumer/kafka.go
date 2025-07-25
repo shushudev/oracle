@@ -1,37 +1,43 @@
 package consumer
 
 import (
-	"context"
 	"database/sql"
-	"log"
-	"time"
+	"fmt"
 
 	"oracle/config"
+
+	"github.com/IBM/sarama"
 
 	"github.com/segmentio/kafka-go"
 )
 
 func StartMappingConsumer(db *sql.DB, writer *kafka.Writer) {
+	fmt.Println("[Kafka: Mapping] StartMappingConsumer 시작됨")
+
 	brokers := config.KafkaBrokers
 	topic := config.TopicDeviceIdToAddressRequest
-	groupID := config.GroupDeviceIdToAddress
+	partition := int32(0)
 
-	r := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     brokers,
-		Topic:       topic,
-		GroupID:     groupID,
-		StartOffset: kafka.LastOffset,
-		MaxWait:     1 * time.Second,
-	})
+	saramaConfig := sarama.NewConfig()
+	saramaConfig.Version = sarama.V2_1_0_0
 
-	log.Println("[Mapping] Oracle Kafka Consumer started...")
-
-	for {
-		m, err := r.ReadMessage(context.Background())
-		if err != nil {
-			log.Printf("[Mapping] Kafka read error: %v\n", err)
-			continue
-		}
-		HandleMappingRequest(m.Value, db, writer)
+	consumer, err := sarama.NewConsumer(brokers, saramaConfig)
+	if err != nil {
+		panic(fmt.Sprintf("[Kafka: Mapping] Consumer 생성 실패: %v", err))
 	}
+
+	partitionConsumer, err := consumer.ConsumePartition(topic, partition, sarama.OffsetNewest)
+	if err != nil {
+		panic(fmt.Sprintf("[Kafka: Mapping] 파티션 구독 실패: %v", err))
+	}
+
+	go func() {
+		fmt.Println("[Kafka: Mapping] Partition Consumer 수신 대기 중...")
+		for msg := range partitionConsumer.Messages() {
+			fmt.Printf("[Kafka: Mapping] 수신 메시지: %s\n", string(msg.Value))
+
+			// 메시지를 처리하는 기존 로직 호출
+			HandleMappingRequest(msg.Value, db, writer)
+		}
+	}()
 }
