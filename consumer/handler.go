@@ -36,20 +36,20 @@ func HandleMessage(msg []byte) {
 }
 
 type MappingRequest struct {
-	DeviceID string `json:"device_id"` // inverter_id 의미
+	DeviceID string `json:"device_id"` // device_id 의미
 }
 
 type MappingResponse struct {
-	InverterID string `json:"inverter_id"`
-	Address    string `json:"address"`
+	DeviceID string `json:"device_id"`
+	Address  string `json:"address"`
 }
 
 // DB에서 address 조회
-func LookupAddressFromDB(db *sql.DB, inverterID string) string {
+func LookupAddressFromDB(db *sql.DB, DeviceID string) string {
 	var address string
-	err := db.QueryRow("SELECT address FROM userData WHERE inverter_id = $1", inverterID).Scan(&address)
+	err := db.QueryRow("SELECT address FROM userData WHERE device_id = $1", DeviceID).Scan(&address)
 	if err != nil {
-		log.Printf("[Mapping] DB query error for inverter_id=%s: %v", inverterID, err)
+		log.Printf("[Mapping] DB query error for device_id=%s: %v", DeviceID, err)
 		return ""
 	}
 	return address
@@ -64,13 +64,13 @@ func HandleMappingRequest(msg []byte, db *sql.DB, writer *kafka.Writer) {
 
 	address := LookupAddressFromDB(db, req.DeviceID)
 	if address == "" {
-		log.Printf("[Mapping] No address found for inverter_id=%s", req.DeviceID)
+		log.Printf("[Mapping] No address found for device_id=%s", req.DeviceID)
 		return
 	}
 
 	resp := MappingResponse{
-		InverterID: req.DeviceID,
-		Address:    address,
+		DeviceID: req.DeviceID,
+		Address:  address,
 	}
 
 	respBytes, _ := json.Marshal(resp)
@@ -84,5 +84,5 @@ func HandleMappingRequest(msg []byte, db *sql.DB, writer *kafka.Writer) {
 		return
 	}
 
-	log.Printf("[Mapping] inverter_id=%s → address=%s", req.DeviceID, address)
+	log.Printf("[Mapping] device_id=%s → address=%s", req.DeviceID, address)
 }

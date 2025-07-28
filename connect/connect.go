@@ -11,11 +11,11 @@ import (
 )
 
 type ConnectRequest struct {
-	NodeID     string `json:"node_id"`
-	InverterID string `json:"inverter_id"`
-	Password   string `json:"password"`
-	PublicKey  string `json:"public_key"`
-	Address    string `json:"address"`
+	NodeID    string `json:"node_id"`
+	DeviceID  string `json:"device_id"`
+	Password  string `json:"password"`
+	PublicKey string `json:"public_key"`
+	Address   string `json:"address"`
 }
 
 func ConnectHandler(db *sql.DB, writer *kafka.Writer) http.HandlerFunc {
@@ -29,9 +29,9 @@ func ConnectHandler(db *sql.DB, writer *kafka.Writer) http.HandlerFunc {
 		}
 
 		// INSERT 쿼리 실행
-		query := `INSERT INTO userData (node_id, inverter_id, password, public_key, created_at, address)
+		query := `INSERT INTO userData (node_id, device_id, password, public_key, created_at, address)
 				  VALUES ($1, $2, $3, $4, $5, $6)`
-		_, err = db.Exec(query, req.NodeID, req.InverterID, req.Password, req.PublicKey, time.Now(), req.Address)
+		_, err = db.Exec(query, req.NodeID, req.DeviceID, req.Password, req.PublicKey, time.Now(), req.Address)
 		if err != nil {
 			log.Printf("[ConnectHandler] DB insert error: %v", err)
 			http.Error(w, "Failed to insert user data", http.StatusInternalServerError)
