@@ -20,7 +20,6 @@ func main() {
 	mappingWriter := producer.NewMappingWriter()
 	voteWriter := producer.NewVoteMemberWriter()
 
-	//	go consumer.StartMappingConsumer(database, mappingWriter)
 	go producer.StartUserMonitor(database, voteWriter)
 	// HTTP 서버: /connect API 등록
 	http.HandleFunc("/connect", func(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +32,7 @@ func main() {
 	})
 
 	go consumer.StartMappingConsumer(database, mappingWriter)
-
+	go consumer.StartRequestVoteMemberConsumer(database)
 	log.Println("Server running on :3001")
 	log.Fatal(http.ListenAndServe(":3001", nil))
 	select {}

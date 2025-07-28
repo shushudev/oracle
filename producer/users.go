@@ -1,6 +1,10 @@
 package producer
 
 import (
+	"fmt"
+	"oracle/config"
+
+	"github.com/IBM/sarama"
 	"github.com/segmentio/kafka-go"
 
 	"context"
@@ -17,7 +21,7 @@ type UserCountPayload struct {
 }
 
 // DB에서 user 수 조회
-func fetchUserCount(db *sql.DB) (int, error) {
+func FetchUserCount(db *sql.DB) (int, error) {
 	var count int
 	err := db.QueryRow(`SELECT COUNT(*) FROM userData`).Scan(&count)
 	return count, err
@@ -55,7 +59,7 @@ func StartUserMonitor(db *sql.DB, writer *kafka.Writer) {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		count, err := fetchUserCount(db)
+		count, err := FetchUserCount(db)
 		if err != nil {
 			log.Printf("[Users] DB query error: %v", err)
 			continue
@@ -68,4 +72,26 @@ func StartUserMonitor(db *sql.DB, writer *kafka.Writer) {
 			}
 		}
 	}
+}
+
+func PublishVoteMemberCount(count int) error {
+	producer, err := sarama.NewSyncProducer(config.KafkaBrokers, nil)
+	if err != nil {
+		return fmt.Errorf("Kafka 프로듀서 생성 실패: %w", err)
+	}
+	defer producer.Close()
+
+	msgStruct := UserCountPayload{Count: count}
+	jsonBytes, err := json.Marshal(msgStruct)
+	if err != nil {
+		return fmt.Errorf("JSON 직렬화 실패: %w", err)
+	}
+
+	msg := &sarama.ProducerMessage{
+		Topic: config.TopicVoteMember,
+		Value: sarama.ByteEncoder(jsonBytes),
+	}
+
+	_, _, err = producer.SendMessage(msg)
+	return err
 }

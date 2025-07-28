@@ -6,6 +6,7 @@ var (
 
 	// Kafka 토픽 Consumer
 	TopicDeviceIdToAddressRequest = "device-address-request-topic"
+	TopicRequestMemberCount       = "request-user-count-topic"
 	// Kafka Topic Producer
 	TopicDeviceIdToAddress = "device-address-topic"
 	TopicVoteMember        = "user-count-topic"
