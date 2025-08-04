@@ -19,6 +19,7 @@ func main() {
 	database := db.ConnectDB()
 	mappingWriter := producer.NewMappingWriter()
 	voteWriter := producer.NewVoteMemberWriter()
+	locationWriter := producer.NewLocationWriter()
 
 	go producer.StartUserMonitor(database, voteWriter)
 	// HTTP 서버: /connect API 등록
@@ -33,6 +34,7 @@ func main() {
 
 	go consumer.StartMappingConsumer(database, mappingWriter)
 	go consumer.StartRequestVoteMemberConsumer(database)
+	go consumer.StartLocationConsumer(database, locationWriter)
 	log.Println("Server running on :3001")
 	log.Fatal(http.ListenAndServe(":3001", nil))
 	select {}

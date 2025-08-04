@@ -1,8 +1,13 @@
 package consumer
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"time"
 
 	"oracle/config"
 
@@ -86,4 +91,108 @@ func StartRequestVoteMemberConsumer(db *sql.DB) {
 			fmt.Printf("[Oracle] VoteMemberCount=%d 전송 완료\n", count)
 		}
 	}()
+}
+
+type Location struct {
+	Latitude   float64 `json:"latitude"`
+	Longitutde float64 `json:"longitude"` // ← 오타 주의: Longitutde → Longitude
+}
+
+type LocationPayload struct {
+	Hash     string   `json:"hash"`
+	Location Location `json:"location"`
+}
+
+type LocationOutputMessage struct {
+	Hash   string `json:"hash"`
+	Output string `json:"output"`
+}
+
+func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
+	fmt.Println("[Kafka: Location] Start Location Consumer")
+
+	brokers := config.KafkaBrokers
+	topic := config.TopicRequestLocation
+	outputTopic := config.TopicResultLocationProducer
+	partition := int32(0)
+
+	saramaConfig := sarama.NewConfig()
+	saramaConfig.Version = sarama.V2_1_0_0
+
+	consumer, err := sarama.NewConsumer(brokers, saramaConfig)
+	if err != nil {
+		panic(fmt.Sprintf("[Kafka: Location] Consumer 생성 실패: %v", err))
+	}
+
+	partitionConsumer, err := consumer.ConsumePartition(topic, partition, sarama.OffsetNewest)
+	if err != nil {
+		panic(fmt.Sprintf("[Kafka: Location] 파티션 구독 실패: %v", err))
+	}
+
+	go func() {
+		fmt.Println("[Kafka: Location] Partition Consumer 수신 대기 중...")
+		for msg := range partitionConsumer.Messages() {
+			var payload LocationPayload
+			if err := json.Unmarshal(msg.Value, &payload); err != nil {
+				fmt.Printf("[Kafka: Location] 메시지 파싱 실패: %v\n", err)
+				continue
+			}
+
+			fmt.Printf("[Kafka: Location] 받은 해시: %s | 위도: %f, 경도: %f\n", payload.Hash, payload.Location.Latitude, payload.Location.Longitutde)
+
+			// 역지오코딩 API 호출
+			regionName := getRegionName(payload.Location.Latitude, payload.Location.Longitutde)
+			if regionName == "" {
+				fmt.Println("⚠️ 지역명 조회 실패. Kafka 전송 생략")
+				continue
+			}
+
+			// Kafka로 결과 전송
+			output := LocationOutputMessage{
+				Hash:   payload.Hash,
+				Output: regionName,
+			}
+
+			outputBytes, _ := json.Marshal(output)
+			err = writer.WriteMessages(
+				context.Background(),
+				kafka.Message{
+					Topic: outputTopic,
+					Value: outputBytes,
+				},
+			)
+			if err != nil {
+				fmt.Printf("[Kafka: Location] 지역명 Kafka 전송 실패: %v\n", err)
+			} else {
+				fmt.Printf("[Kafka: Location] 지역명 전송 완료: %s → %s\n", payload.Hash, regionName)
+			}
+		}
+	}()
+}
+
+// 역지오코딩: 위도/경도 → 지역명 (OpenStreetMap Nominatim API 사용)
+func getRegionName(lat, lng float64) string {
+	url := fmt.Sprintf("https://nominatim.openstreetmap.org/reverse?format=json&lat=%f&lon=%f", lat, lng)
+
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("User-Agent", "capstone-location-resolver")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("❌ 역지오코딩 API 호출 실패:", err)
+		return ""
+	}
+	defer resp.Body.Close()
+
+	body, _ := ioutil.ReadAll(resp.Body)
+
+	var result struct {
+		DisplayName string `json:"display_name"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		fmt.Println("❌ 역지오코딩 결과 파싱 실패:", err)
+		return ""
+	}
+	return result.DisplayName
 }

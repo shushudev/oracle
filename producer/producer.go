@@ -10,7 +10,7 @@ import (
 func NewMappingWriter() *kafka.Writer {
 	return &kafka.Writer{
 		Addr:     kafka.TCP(config.KafkaBrokers...),
-		Topic:    config.TopicDeviceIdToAddress,
+		Topic:    config.TopicDeviceIdToAddressProducer,
 		Balancer: &kafka.LeastBytes{},
 	}
 }
@@ -18,7 +18,15 @@ func NewMappingWriter() *kafka.Writer {
 func NewVoteMemberWriter() *kafka.Writer {
 	return &kafka.Writer{
 		Addr:     kafka.TCP(config.KafkaBrokers...),
-		Topic:    config.TopicVoteMember,
+		Topic:    config.TopicVoteMemberProducer,
+		Balancer: &kafka.LeastBytes{},
+	}
+}
+
+func NewLocationWriter() *kafka.Writer {
+	return &kafka.Writer{
+		Addr:     kafka.TCP(config.KafkaBrokers...),
+		Topic:    config.TopicResultLocationProducer,
 		Balancer: &kafka.LeastBytes{},
 	}
 }

@@ -88,7 +88,7 @@ func PublishVoteMemberCount(count int) error {
 	}
 
 	msg := &sarama.ProducerMessage{
-		Topic: config.TopicVoteMember,
+		Topic: config.TopicVoteMemberProducer,
 		Value: sarama.ByteEncoder(jsonBytes),
 	}
 
