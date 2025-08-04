@@ -9,9 +9,9 @@ var (
 	TopicRequestMemberCount       = "request-user-count-topic"
 	TopicRequestLocation          = "request-location-topic" // 풀노드에서 위치정보 전송
 	// Kafka Topic Producer
-	TopicDeviceIdToAddress      = "device-address-topic"
-	TopicVoteMember             = "user-count-topic"
-	TopicResultLocationProducer = "result-location-topic"
+	TopicDeviceIdToAddressProducer = "device-address-topic"
+	TopicVoteMemberProducer        = "user-count-topic"
+	TopicResultLocationProducer    = "result-location-topic"
 
 	// Kafka Group
 	GroupVote              = "vote-member-group"
