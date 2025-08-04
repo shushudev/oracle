@@ -22,6 +22,7 @@ func main() {
 	locationWriter := producer.NewLocationWriter()
 
 	go producer.StartUserMonitor(database, voteWriter)
+
 	// HTTP 서버: /connect API 등록
 	http.HandleFunc("/connect", func(w http.ResponseWriter, r *http.Request) {
 		enableCORS(w)
@@ -32,14 +33,14 @@ func main() {
 		api.ConnectHandler(database, voteWriter)(w, r)
 	})
 
+	// ✅ 세 개의 Kafka Consumer 실행
+	go consumer.StartMappingConsumer(database, mappingWriter)
 	go consumer.StartRequestVoteMemberConsumer(database)
 	go consumer.StartLocationConsumer(database, locationWriter)
-	go consumer.StartMappingConsumer(database, mappingWriter)
 
 	log.Println("Server running on :3001")
 	log.Fatal(http.ListenAndServe(":3001", nil))
 	select {}
 	// defer voteWriter.Close() // 필요 시 종료 시점에 닫기
 	// defer mappingWriter.Close()
-
 }

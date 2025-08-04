@@ -30,3 +30,11 @@ func NewLocationWriter() *kafka.Writer {
 		Balancer: &kafka.LeastBytes{},
 	}
 }
+
+func NewLocationWriter() *kafka.Writer {
+	return &kafka.Writer{
+		Addr:     kafka.TCP(config.KafkaBrokers...),
+		Topic:    config.TopicResultLocationProducer,
+		Balancer: &kafka.LeastBytes{},
+	}
+}
