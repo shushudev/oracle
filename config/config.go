@@ -2,7 +2,7 @@ package config
 
 var (
 	// Kafka 브로커 IP 및 포트
-	KafkaBrokers = []string{"Kafka00Service:9092"}
+	KafkaBrokers = []string{"Kafka00Service:9092", "Kafka01Service:9092", "Kafka02Service:9092"}
 
 	// Kafka 토픽 Consumer
 	TopicDeviceIdToAddressRequest = "device-address-request-topic"

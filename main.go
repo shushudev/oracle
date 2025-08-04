@@ -32,9 +32,10 @@ func main() {
 		api.ConnectHandler(database, voteWriter)(w, r)
 	})
 
-	go consumer.StartMappingConsumer(database, mappingWriter)
 	go consumer.StartRequestVoteMemberConsumer(database)
 	go consumer.StartLocationConsumer(database, locationWriter)
+	go consumer.StartMappingConsumer(database, mappingWriter)
+
 	log.Println("Server running on :3001")
 	log.Fatal(http.ListenAndServe(":3001", nil))
 	select {}
