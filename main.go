@@ -2,11 +2,13 @@ package main
 
 import (
 	"log"
-	"net/http"
 	api "oracle/connect"
+
 	"oracle/consumer"
 	"oracle/db"
 	"oracle/producer"
+
+	"net/http"
 )
 
 func enableCORS(w http.ResponseWriter) {
@@ -51,6 +53,4 @@ func main() {
 	log.Println("Server running on :3001")
 	log.Fatal(http.ListenAndServe(":3001", nil))
 	select {}
-	// defer voteWriter.Close() // 필요 시 종료 시점에 닫기
-	// defer mappingWriter.Close()
 }

@@ -103,9 +103,11 @@ const (
 )
 
 type TokenResponse struct {
-	ErrCd       int    `json:"errCd"` // string → int 로 수정
-	ErrMsg      string `json:"errMsg"`
-	AccessToken string `json:"accessToken"`
+	ErrCd  int    `json:"errCd"`
+	ErrMsg string `json:"errMsg"`
+	Result struct {
+		AccessToken string `json:"accessToken"`
+	} `json:"result"`
 }
 
 // 0️⃣ AccessToken 발급
@@ -121,20 +123,25 @@ func GetAccessToken() (string, error) {
 	}
 	defer resp.Body.Close()
 
-	var r struct {
-		ErrCd       string `json:"errCd"`
-		AccessToken string `json:"accessToken"`
-	}
 	body, _ := io.ReadAll(resp.Body)
-	var tokenResp TokenResponse
+
+	var tokenResp struct {
+		ErrCd  int    `json:"errCd"`
+		ErrMsg string `json:"errMsg"`
+		Result struct {
+			AccessToken string `json:"accessToken"`
+		} `json:"result"`
+	}
 
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
 		return "", err
 	}
-	if r.ErrCd != "0" {
-		return "", fmt.Errorf("accessToken 요청 실패: errCd=%s", r.ErrCd)
+
+	if tokenResp.ErrCd != 0 {
+		return "", fmt.Errorf("accessToken 요청 실패: errCd=%d", tokenResp.ErrCd)
 	}
-	return r.AccessToken, nil
+
+	return tokenResp.Result.AccessToken, nil
 }
 
 // 1️⃣ UTMK 좌표 변환
@@ -153,6 +160,7 @@ func ConvertToUTMK(lat, lon float64, accessToken string) (x, y float64, err erro
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
+
 	var r struct {
 		Result struct {
 			PosX float64 `json:"posX"`
@@ -182,13 +190,16 @@ func FindAdmCode(x, y float64, accessToken string) (admCode string, err error) {
 	defer resp.Body.Close()
 	var r struct {
 		Result struct {
-			AdmCd string `json:"adm_cd"`
+			SidoCd string `json:"sido_cd"`
+			SggCd  string `json:"sgg_cd"`
 		} `json:"result"`
 	}
+
 	body, _ := io.ReadAll(resp.Body)
+
 	err = json.Unmarshal(body, &r)
 	if err == nil {
-		admCode = r.Result.AdmCd
+		admCode = r.Result.SidoCd + r.Result.SggCd
 	}
 	return
 }
@@ -201,6 +212,7 @@ func GetPopulation(admCode string, year string, accessToken string) (int, error)
 		"year":        {year},
 		"accessToken": {accessToken},
 	}
+
 	resp, err := http.Get(reqUrl + "?" + params.Encode())
 	if err != nil {
 		return 0, err
@@ -211,7 +223,9 @@ func GetPopulation(admCode string, year string, accessToken string) (int, error)
 			Population string `json:"population"`
 		} `json:"result"`
 	}
+
 	body, _ := io.ReadAll(resp.Body)
+
 	if err := json.Unmarshal(body, &r); err != nil {
 		return 0, err
 	}
