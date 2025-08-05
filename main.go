@@ -33,6 +33,16 @@ func main() {
 		api.ConnectHandler(database, voteWriter)(w, r)
 	})
 
+	// HTTP 서버: /verify API 등록
+	http.HandleFunc("/verify", func(w http.ResponseWriter, r *http.Request) {
+		enableCORS(w)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		api.VerifyHandler(database)(w, r) // VerifyHandler는 connect/verify.go에 구현
+	})
+
 	// ✅ 세 개의 Kafka Consumer 실행
 	go consumer.StartMappingConsumer(database, mappingWriter)
 	go consumer.StartRequestVoteMemberConsumer(database)
