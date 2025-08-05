@@ -5,10 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"net/http"
-	"time"
-
+	"log"
+	"math"
 	"oracle/config"
 
 	"github.com/IBM/sarama"
@@ -17,6 +15,19 @@ import (
 
 	"oracle/producer"
 )
+
+type Plant struct { // 발전소
+	ID            int
+	Name          string
+	Location      string
+	ReactorType   string
+	CapacityMW    string
+	OperationDate string
+	Note          string
+	NoteDetail    string
+	Latitude      float64
+	Longitude     float64
+}
 
 func StartMappingConsumer(db *sql.DB, writer *kafka.Writer) {
 	fmt.Println("[Kafka: Mapping] StartMappingConsumer 시작됨")
@@ -105,9 +116,9 @@ type LocationPayload struct {
 }
 
 type LocationOutputMessage struct {
-	Hash     string `json:"hash"`
-	Output   string `json:"output"`
-	SenderID string `json:"sender_id"`
+	Hash     string  `json:"hash"`
+	Output   float64 `json:"output"`
+	SenderID string  `json:"sender_id"`
 }
 
 func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
@@ -141,17 +152,32 @@ func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 
 			fmt.Printf("[Kafka: Location] 받은 해시: %s | 위도: %f, 경도: %f\n", payload.Hash, payload.Location.Latitude, payload.Location.Longitutde)
 
-			// 역지오코딩 API 호출
-			regionName := getRegionName(payload.Location.Latitude, payload.Location.Longitutde)
-			if regionName == "" {
-				fmt.Println("⚠️ 지역명 조회 실패. Kafka 전송 생략")
-				continue
+			plants, err := LoadAllNuclearPlants(db)
+			if err != nil {
+				log.Fatalf("DB에서 발전소 목록 불러오기 실패: %v", err)
+			}
+
+			closestPlant, distance := FindClosestPlant(plants, payload.Location.Latitude, payload.Location.Longitutde)
+			fmt.Printf("가장 가까운 발전소: %s (%.2f km)\n", closestPlant.Name, distance)
+
+			reward := calcRewardWeight(distance)
+
+			pop, err := GetPopulationByLatLon(payload.Location.Latitude, payload.Location.Longitutde, "2023")
+			if err != nil {
+				fmt.Println("🚫 오류:", err)
+			} else {
+				fmt.Printf("위치 인구 수: %d명\n", pop)
+
+				// 인구 기반 가중치
+				popWeight := calcPopulationRewardWeight(pop)
+				fmt.Printf("인구 기반 보상 가중치: %.2f\n", popWeight)
+				reward = reward + popWeight
 			}
 
 			// Kafka로 결과 전송
 			output := LocationOutputMessage{
 				Hash:     payload.Hash,
-				Output:   regionName,
+				Output:   reward,
 				SenderID: payload.SenderID,
 			}
 
@@ -165,35 +191,107 @@ func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 			if err != nil {
 				fmt.Printf("[Kafka: Location] 지역명 Kafka 전송 실패: %v\n", err)
 			} else {
-				fmt.Printf("[Kafka: Location] 지역명 전송 완료: %s → %s\n", payload.Hash, regionName)
+				fmt.Printf("[Kafka: Location] 지역명 전송 완료: %s → %s\n", payload.Hash, closestPlant.Name)
 			}
 		}
 	}()
 }
 
-// 역지오코딩: 위도/경도 → 지역명 (OpenStreetMap Nominatim API 사용)
-func getRegionName(lat, lng float64) string {
-	url := fmt.Sprintf("https://nominatim.openstreetmap.org/reverse?format=json&lat=%f&lon=%f", lat, lng)
+func LoadAllNuclearPlants(db *sql.DB) ([]Plant, error) {
+	query := `
+		SELECT 
+			id, name, location, reactor_type, capacity_mw, operation_date, 
+			note, note_detail, latitude, longitude 
+		FROM nuclear_power_plants
+	`
 
-	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("User-Agent", "capstone-location-resolver")
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
+	rows, err := db.Query(query)
 	if err != nil {
-		fmt.Println("❌ 역지오코딩 API 호출 실패:", err)
-		return ""
+		return nil, fmt.Errorf("원자력 발전소 정보 조회 실패: %w", err)
 	}
-	defer resp.Body.Close()
+	defer rows.Close()
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	var plants []Plant
+	for rows.Next() {
+		var p Plant
+		err := rows.Scan(
+			&p.ID, &p.Name, &p.Location, &p.ReactorType, &p.CapacityMW,
+			&p.OperationDate, &p.Note, &p.NoteDetail, &p.Latitude, &p.Longitude,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("행 데이터 스캔 실패: %w", err)
+		}
+		plants = append(plants, p)
+	}
 
-	var result struct {
-		DisplayName string `json:"display_name"`
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("결과 순회 중 오류: %w", err)
 	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		fmt.Println("❌ 역지오코딩 결과 파싱 실패:", err)
-		return ""
+
+	return plants, nil
+}
+
+// 두 좌표 사이 거리 (단위: km)
+func haversine(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371 // 지구 반지름 (킬로미터)
+	dLat := (lat2 - lat1) * math.Pi / 180
+	dLon := (lon2 - lon1) * math.Pi / 180
+	lat1Rad := lat1 * math.Pi / 180
+	lat2Rad := lat2 * math.Pi / 180
+
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1Rad)*math.Cos(lat2Rad)*
+			math.Sin(dLon/2)*math.Sin(dLon/2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	return R * c
+}
+
+func FindClosestPlant(plants []Plant, targetLat, targetLon float64) (*Plant, float64) {
+	var closest *Plant
+	minDistance := math.MaxFloat64
+
+	for _, plant := range plants {
+		dist := haversine(targetLat, targetLon, plant.Latitude, plant.Longitude)
+		if dist < minDistance {
+			minDistance = dist
+			closest = &plant
+		}
 	}
-	return result.DisplayName
+
+	return closest, minDistance
+}
+
+// 거리(km)를 입력받아 보상 가중치를 계산
+func calcRewardWeight(distanceKm float64) float64 {
+	if distanceKm <= 10 {
+		return 0.2
+	} else if distanceKm <= 20 {
+		return 0.4
+	} else if distanceKm <= 30 {
+		return 0.6
+	} else if distanceKm <= 50 {
+		return 0.8
+	}
+	return 1.0
+}
+
+// 인구 수 기준 보상 가중치 계산
+func calcPopulationRewardWeight(pop int) float64 {
+	switch {
+	case pop >= 1000000:
+		// 대도시 (서울, 부산 등)
+		return 1.0
+	case pop >= 500000:
+		// 중대형 도시
+		return 0.8
+	case pop >= 100000:
+		// 중소도시
+		return 0.6
+	case pop >= 30000:
+		// 소도시
+		return 0.4
+	default:
+		// 농촌, 시골 등 인구 희박 지역
+		return 0.2
+	}
 }

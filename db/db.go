@@ -2,9 +2,10 @@ package db
 
 import (
 	"database/sql"
-	_ "github.com/lib/pq"
 	"log"
 	"oracle/config"
+
+	_ "github.com/lib/pq"
 )
 
 func ConnectDB() *sql.DB {
