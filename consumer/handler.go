@@ -102,6 +102,12 @@ const (
 	ConsumerSecret = "9990cf6a197c429d8db1"
 )
 
+type TokenResponse struct {
+	ErrCd       int    `json:"errCd"` // string → int 로 수정
+	ErrMsg      string `json:"errMsg"`
+	AccessToken string `json:"accessToken"`
+}
+
 // 0️⃣ AccessToken 발급
 func GetAccessToken() (string, error) {
 	reqUrl := fmt.Sprintf("%sauth/authentication.json", BaseURL)
@@ -120,7 +126,9 @@ func GetAccessToken() (string, error) {
 		AccessToken string `json:"accessToken"`
 	}
 	body, _ := io.ReadAll(resp.Body)
-	if err := json.Unmarshal(body, &r); err != nil {
+	var tokenResp TokenResponse
+
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
 		return "", err
 	}
 	if r.ErrCd != "0" {
