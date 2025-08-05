@@ -36,12 +36,14 @@ func HandleMessage(msg []byte) {
 }
 
 type MappingRequest struct {
-	DeviceID string `json:"device_id"` // device_id 의미
+	DeviceID string `json:"device_id"`
+	SenderID string `json:"sender_id"`
 }
 
 type MappingResponse struct {
 	DeviceID string `json:"device_id"`
 	Address  string `json:"address"`
+	SenderID string `json:"sender_id"`
 }
 
 // DB에서 address 조회
@@ -71,6 +73,7 @@ func HandleMappingRequest(msg []byte, db *sql.DB, writer *kafka.Writer) {
 	resp := MappingResponse{
 		DeviceID: req.DeviceID,
 		Address:  address,
+		SenderID: req.SenderID,
 	}
 
 	respBytes, _ := json.Marshal(resp)
