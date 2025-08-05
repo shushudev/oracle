@@ -16,17 +16,14 @@ import (
 	"oracle/producer"
 )
 
-type Plant struct { // 발전소
-	ID            int
-	Name          string
-	Location      string
-	ReactorType   string
-	CapacityMW    string
-	OperationDate string
-	Note          string
-	NoteDetail    string
-	Latitude      float64
-	Longitude     float64
+type Plant struct {
+	ID        int     // 고유 ID
+	PlantName string  // 발전소 이름
+	Region    string  // 시/도
+	City      string  // 시/군/구
+	Town      string  // 읍/면/동
+	Latitude  float64 // 위도
+	Longitude float64 // 경도
 }
 
 func StartMappingConsumer(db *sql.DB, writer *kafka.Writer) {
@@ -158,7 +155,7 @@ func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 			}
 
 			closestPlant, distance := FindClosestPlant(plants, payload.Location.Latitude, payload.Location.Longitutde)
-			fmt.Printf("가장 가까운 발전소: %s (%.2f km)\n", closestPlant.Name, distance)
+			fmt.Printf("가장 가까운 발전소: %s (%.2f km)\n", closestPlant.PlantName, distance)
 
 			reward := calcRewardWeight(distance)
 
@@ -189,9 +186,9 @@ func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 				},
 			)
 			if err != nil {
-				fmt.Printf("[Kafka: Location] 지역명 Kafka 전송 실패: %v\n", err)
+				fmt.Printf("[Kafka: Location] 가중치 전송 실패 : %v\n", err)
 			} else {
-				fmt.Printf("[Kafka: Location] 지역명 전송 완료: %s → %s\n", payload.Hash, closestPlant.Name)
+				fmt.Printf("[Kafka: Location] 가중치 전송 완료: %s → %s\n", payload.Hash, reward)
 			}
 		}
 	}()
@@ -200,8 +197,7 @@ func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 func LoadAllNuclearPlants(db *sql.DB) ([]Plant, error) {
 	query := `
 		SELECT 
-			id, name, location, reactor_type, capacity_mw, operation_date, 
-			note, note_detail, latitude, longitude 
+			id, plant_name, region, city, town, latitude, longitude
 		FROM nuclear_power_plants
 	`
 
@@ -215,8 +211,13 @@ func LoadAllNuclearPlants(db *sql.DB) ([]Plant, error) {
 	for rows.Next() {
 		var p Plant
 		err := rows.Scan(
-			&p.ID, &p.Name, &p.Location, &p.ReactorType, &p.CapacityMW,
-			&p.OperationDate, &p.Note, &p.NoteDetail, &p.Latitude, &p.Longitude,
+			&p.ID,
+			&p.PlantName,
+			&p.Region,
+			&p.City,
+			&p.Town,
+			&p.Latitude,
+			&p.Longitude,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("행 데이터 스캔 실패: %w", err)
