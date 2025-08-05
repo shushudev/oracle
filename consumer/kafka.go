@@ -113,7 +113,6 @@ func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 
 	brokers := config.KafkaBrokers
 	topic := config.TopicRequestLocation
-	outputTopic := config.TopicResultLocationProducer
 	partition := int32(0)
 
 	saramaConfig := sarama.NewConfig()
@@ -157,7 +156,6 @@ func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 			err = writer.WriteMessages(
 				context.Background(),
 				kafka.Message{
-					Topic: outputTopic,
 					Value: outputBytes,
 				},
 			)
