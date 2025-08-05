@@ -101,11 +101,13 @@ type Location struct {
 type LocationPayload struct {
 	Hash     string   `json:"hash"`
 	Location Location `json:"location"`
+	SenderID string   `json:"sender_id"`
 }
 
 type LocationOutputMessage struct {
-	Hash   string `json:"hash"`
-	Output string `json:"output"`
+	Hash     string `json:"hash"`
+	Output   string `json:"output"`
+	SenderID string `json:"sender_id"`
 }
 
 func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
@@ -148,8 +150,9 @@ func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 
 			// Kafka로 결과 전송
 			output := LocationOutputMessage{
-				Hash:   payload.Hash,
-				Output: regionName,
+				Hash:     payload.Hash,
+				Output:   regionName,
+				SenderID: payload.SenderID,
 			}
 
 			outputBytes, _ := json.Marshal(output)
