@@ -26,6 +26,8 @@ type Plant struct {
 	Longitude float64 // 경도
 }
 
+var alpha = 0.6 // 쌍대비교 가중치
+
 func StartMappingConsumer(db *sql.DB, writer *kafka.Writer) {
 	fmt.Println("[Kafka: Mapping] StartMappingConsumer 시작됨")
 
@@ -157,7 +159,7 @@ func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 			closestPlant, distance := FindClosestPlant(plants, payload.Location.Latitude, payload.Location.Longitutde)
 			fmt.Printf("가장 가까운 발전소: %s (%.2f km)\n", closestPlant.PlantName, distance)
 
-			reward := calcRewardWeight(distance)
+			reward := calcDistWeight(distance)
 			fmt.Printf("거리 기반 보상 가중치: %.2f\n", reward)
 
 			pop, err := GetPopulationByLatLon(payload.Location.Latitude, payload.Location.Longitutde, "2023")
@@ -169,7 +171,7 @@ func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 				// 인구 기반 가중치
 				popWeight := calcPopulationRewardWeight(pop)
 				fmt.Printf("인구 기반 보상 가중치: %.2f\n", popWeight)
-				reward = reward*0.5 + popWeight*0.5
+				reward = reward*alpha + popWeight*(1-alpha)
 			}
 
 			// Kafka로 결과 전송
@@ -264,36 +266,27 @@ func FindClosestPlant(plants []Plant, targetLat, targetLon float64) (*Plant, flo
 }
 
 // 거리(km)를 입력받아 보상 가중치를 계산
-func calcRewardWeight(distanceKm float64) float64 {
-	if distanceKm <= 10 {
-		return 0.2
-	} else if distanceKm <= 20 {
-		return 0.4
-	} else if distanceKm <= 30 {
-		return 0.6
-	} else if distanceKm <= 50 {
-		return 0.8
+const MaxDistance = 100.0 // 정책에 따라 조정
+var MaxPop = 568000.0     // 가장 인구수가 많은 지역 (노원구)
+
+func calcDistWeight(distanceKm float64) float64 {
+	if distanceKm <= 0 {
+		return 0.0
 	}
-	return 1.0
+	weight := distanceKm / MaxDistance
+	if weight > 1.0 {
+		weight = 1.0
+	}
+	return weight
 }
 
-// 인구 수 기준 보상 가중치 계산
 func calcPopulationRewardWeight(pop int) float64 {
-	switch {
-	case pop >= 1000000:
-		// 대도시 (서울, 부산 등)
-		return 1.0
-	case pop >= 500000:
-		// 중대형 도시
-		return 0.8
-	case pop >= 100000:
-		// 중소도시
-		return 0.6
-	case pop >= 30000:
-		// 소도시
-		return 0.4
-	default:
-		// 농촌, 시골 등 인구 희박 지역
-		return 0.2
+	if pop <= 0 {
+		return 0.0
 	}
+	weight := math.Log(float64(pop)) / math.Log(MaxPop)
+	if weight > 1.0 {
+		return 1.0
+	}
+	return weight
 }
