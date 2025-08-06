@@ -158,6 +158,7 @@ func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 			fmt.Printf("가장 가까운 발전소: %s (%.2f km)\n", closestPlant.PlantName, distance)
 
 			reward := calcRewardWeight(distance)
+			fmt.Printf("거리 기반 보상 가중치: %.2f\n", reward)
 
 			pop, err := GetPopulationByLatLon(payload.Location.Latitude, payload.Location.Longitutde, "2023")
 			if err != nil {
@@ -168,7 +169,7 @@ func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 				// 인구 기반 가중치
 				popWeight := calcPopulationRewardWeight(pop)
 				fmt.Printf("인구 기반 보상 가중치: %.2f\n", popWeight)
-				reward = reward + popWeight
+				reward = reward*0.5 + popWeight*0.5
 			}
 
 			// Kafka로 결과 전송
@@ -188,7 +189,7 @@ func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 			if err != nil {
 				fmt.Printf("[Kafka: Location] 가중치 전송 실패 : %v\n", err)
 			} else {
-				fmt.Printf("[Kafka: Location] 가중치 전송 완료: %s → %s\n", payload.Hash, reward)
+				fmt.Printf("[Kafka: Location] 가중치 전송 완료: %s → %f\n", payload.Hash, reward)
 			}
 		}
 	}()
