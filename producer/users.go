@@ -11,14 +11,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log"
+	"oracle/types"
 	"time"
 )
-
-//투표자 수 최신화 관련 함수
-
-type UserCountPayload struct {
-	Count int `json:"count"`
-}
 
 // DB에서 user 수 조회
 func FetchUserCount(db *sql.DB) (int, error) {
@@ -29,7 +24,7 @@ func FetchUserCount(db *sql.DB) (int, error) {
 
 // Kafka에 메시지 발행
 func PublishUserCount(writer *kafka.Writer, count int) error {
-	payload := UserCountPayload{Count: count}
+	payload := types.UserCountPayload{Count: count}
 	msgBytes, err := json.Marshal(payload)
 	if err != nil {
 		log.Printf("[Users] JSON marshal error: %v", err)
@@ -81,7 +76,7 @@ func PublishVoteMemberCount(count int) error {
 	}
 	defer producer.Close()
 
-	msgStruct := UserCountPayload{Count: count}
+	msgStruct := types.UserCountPayload{Count: count}
 	jsonBytes, err := json.Marshal(msgStruct)
 	if err != nil {
 		return fmt.Errorf("JSON 직렬화 실패: %w", err)

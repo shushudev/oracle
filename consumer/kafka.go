@@ -14,17 +14,8 @@ import (
 	"github.com/segmentio/kafka-go"
 
 	"oracle/producer"
+	"oracle/types"
 )
-
-type Plant struct {
-	ID        int     // 고유 ID
-	PlantName string  // 발전소 이름
-	Region    string  // 시/도
-	City      string  // 시/군/구
-	Town      string  // 읍/면/동
-	Latitude  float64 // 위도
-	Longitude float64 // 경도
-}
 
 var alpha = 0.6 // 쌍대비교 가중치
 
@@ -103,23 +94,6 @@ func StartRequestVoteMemberConsumer(db *sql.DB) {
 	}()
 }
 
-type Location struct {
-	Latitude   float64 `json:"latitude"`
-	Longitutde float64 `json:"longitude"` // ← 오타 주의: Longitutde → Longitude
-}
-
-type LocationPayload struct {
-	Hash     string   `json:"hash"`
-	Location Location `json:"location"`
-	SenderID string   `json:"sender_id"`
-}
-
-type LocationOutputMessage struct {
-	Hash     string  `json:"hash"`
-	Output   float64 `json:"output"`
-	SenderID string  `json:"sender_id"`
-}
-
 func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 	fmt.Println("[Kafka: Location] Start Location Consumer")
 
@@ -143,7 +117,7 @@ func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 	go func() {
 		fmt.Println("[Kafka: Location] Partition Consumer 수신 대기 중...")
 		for msg := range partitionConsumer.Messages() {
-			var payload LocationPayload
+			var payload types.LocationPayload
 			if err := json.Unmarshal(msg.Value, &payload); err != nil {
 				fmt.Printf("[Kafka: Location] 메시지 파싱 실패: %v\n", err)
 				continue
@@ -175,7 +149,7 @@ func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 			}
 
 			// Kafka로 결과 전송
-			output := LocationOutputMessage{
+			output := types.LocationOutputMessage{
 				Hash:     payload.Hash,
 				Output:   reward,
 				SenderID: payload.SenderID,
@@ -197,7 +171,7 @@ func StartLocationConsumer(db *sql.DB, writer *kafka.Writer) {
 	}()
 }
 
-func LoadAllNuclearPlants(db *sql.DB) ([]Plant, error) {
+func LoadAllNuclearPlants(db *sql.DB) ([]types.Plant, error) {
 	query := `
 		SELECT 
 			id, plant_name, region, city, town, latitude, longitude
@@ -210,9 +184,9 @@ func LoadAllNuclearPlants(db *sql.DB) ([]Plant, error) {
 	}
 	defer rows.Close()
 
-	var plants []Plant
+	var plants []types.Plant
 	for rows.Next() {
-		var p Plant
+		var p types.Plant
 		err := rows.Scan(
 			&p.ID,
 			&p.PlantName,
@@ -250,8 +224,8 @@ func haversine(lat1, lon1, lat2, lon2 float64) float64 {
 	return R * c
 }
 
-func FindClosestPlant(plants []Plant, targetLat, targetLon float64) (*Plant, float64) {
-	var closest *Plant
+func FindClosestPlant(plants []types.Plant, targetLat, targetLon float64) (*types.Plant, float64) {
+	var closest *types.Plant
 	minDistance := math.MaxFloat64
 
 	for _, plant := range plants {

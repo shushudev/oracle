@@ -12,7 +12,7 @@ var (
 	TopicDeviceIdToAddressProducer = "device-address-topic"
 	TopicVoteMemberProducer        = "user-count-topic"
 	TopicResultLocationProducer    = "result-location-topic"
-
+	TopicCreateAccountProducer     = "create-address-topic"
 	// Kafka Group
 	GroupVote              = "vote-member-group"
 	GroupDeviceIdToAddress = "device-address-group"

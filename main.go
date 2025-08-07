@@ -22,6 +22,7 @@ func main() {
 	mappingWriter := producer.NewMappingWriter()
 	voteWriter := producer.NewVoteMemberWriter()
 	locationWriter := producer.NewLocationWriter()
+	accountCreateWriter := producer.NewAccounCreatetWriter()
 
 	go producer.StartUserMonitor(database, voteWriter)
 
@@ -32,7 +33,7 @@ func main() {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		api.ConnectHandler(database, voteWriter)(w, r)
+		api.ConnectHandler(database, voteWriter, accountCreateWriter)(w, r)
 	})
 
 	// HTTP 서버: /verify API 등록
@@ -49,7 +50,6 @@ func main() {
 	go consumer.StartMappingConsumer(database, mappingWriter)
 	go consumer.StartRequestVoteMemberConsumer(database)
 	go consumer.StartLocationConsumer(database, locationWriter)
-
 	log.Println("Server running on :3001")
 	log.Fatal(http.ListenAndServe(":3001", nil))
 	select {}

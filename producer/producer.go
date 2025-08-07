@@ -30,3 +30,11 @@ func NewLocationWriter() *kafka.Writer {
 		Balancer: &kafka.LeastBytes{},
 	}
 }
+
+func NewAccounCreatetWriter() *kafka.Writer { // 회원가입
+	return &kafka.Writer{
+		Addr:     kafka.TCP(config.KafkaBrokers...),
+		Topic:    config.TopicCreateAccountProducer,
+		Balancer: &kafka.LeastBytes{},
+	}
+}

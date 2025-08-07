@@ -13,6 +13,8 @@ import (
 	"oracle/model"
 	"strconv"
 
+	"oracle/types"
+
 	"github.com/segmentio/kafka-go"
 )
 
@@ -40,17 +42,6 @@ func HandleMessage(msg []byte) {
 	}
 }
 
-type MappingRequest struct {
-	DeviceID string `json:"device_id"`
-	SenderID string `json:"sender_id"`
-}
-
-type MappingResponse struct {
-	DeviceID string `json:"device_id"`
-	Address  string `json:"address"`
-	SenderID string `json:"sender_id"`
-}
-
 // DB에서 address 조회
 func LookupAddressFromDB(db *sql.DB, DeviceID string) string {
 	var address string
@@ -63,7 +54,7 @@ func LookupAddressFromDB(db *sql.DB, DeviceID string) string {
 }
 
 func HandleMappingRequest(msg []byte, db *sql.DB, writer *kafka.Writer) {
-	var req MappingRequest
+	var req types.MappingRequest
 	if err := json.Unmarshal(msg, &req); err != nil {
 		log.Printf("[Mapping] JSON decode error: %v\n", err)
 		return
@@ -75,7 +66,7 @@ func HandleMappingRequest(msg []byte, db *sql.DB, writer *kafka.Writer) {
 		return
 	}
 
-	resp := MappingResponse{
+	resp := types.MappingResponse{
 		DeviceID: req.DeviceID,
 		Address:  address,
 		SenderID: req.SenderID,
