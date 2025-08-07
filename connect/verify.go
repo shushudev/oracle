@@ -49,9 +49,9 @@ func VerifyHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// ✅ DB에서 비밀번호 조회
-		var hashedPassword string
-		query := `SELECT password FROM userData WHERE node_id=$1 AND device_id=$2`
-		err = db.QueryRow(query, req.NodeID, req.DeviceID).Scan(&hashedPassword)
+		var hashedPassword, address string
+		query := `SELECT password, address FROM userData WHERE node_id=$1 AND device_id=$2`
+		err = db.QueryRow(query, req.NodeID, req.DeviceID).Scan(&hashedPassword, &address)
 		if err != nil {
 			log.Printf("[VerifyHandler] User not found: node_id=%s, device_id=%s", req.NodeID, req.DeviceID)
 			writeJSON(w, http.StatusUnauthorized, map[string]string{
@@ -75,6 +75,7 @@ func VerifyHandler(db *sql.DB) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]string{
 			"status":  "success",
 			"message": "Login successful",
+			"address": address,
 		})
 	}
 }
