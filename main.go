@@ -33,7 +33,7 @@ func main() {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		api.ConnectHandler(database, voteWriter, accountCreateWriter)(w, r)
+		api.ConnectHandler(database, accountCreateWriter)(w, r)
 	})
 
 	// HTTP 서버: /verify API 등록

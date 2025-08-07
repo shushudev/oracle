@@ -16,7 +16,7 @@ import (
 )
 
 // ConnectHandler : 사용자 등록 처리
-func ConnectHandler(db *sql.DB, writer, fullWriter *kafka.Writer) http.HandlerFunc {
+func ConnectHandler(db *sql.DB, writer *kafka.Writer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// 1. JSON 요청 파싱
 		var req types.ConnectRequest
@@ -44,27 +44,8 @@ func ConnectHandler(db *sql.DB, writer, fullWriter *kafka.Writer) http.HandlerFu
 			return
 		}
 
-		// 3-1 full node에 주소 정보 전달
-		AccountCreateHandler(db, fullWriter, req)
-
-		// 4. Kafka 메시지 발행 (가입 이벤트)
-		msgBytes, err := json.Marshal(req)
-		if err != nil {
-			log.Printf("[ConnectHandler] Kafka marshal error: %v", err)
-		} else {
-			err = writer.WriteMessages(r.Context(), kafka.Message{
-				Key:   []byte(req.NodeID),
-				Value: msgBytes,
-			})
-			if err != nil {
-				log.Printf("[ConnectHandler] Kafka write error: %v", err)
-			}
-		}
-
-		// 5. 성공 응답
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"success","message":"User registered successfully"}`))
+		// 4 full node에 주소 정보 전달
+		AccountCreateHandler(db, writer, req)
 	}
 }
 
