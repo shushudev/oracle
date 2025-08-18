@@ -17,7 +17,7 @@ import (
 	"oracle/types"
 )
 
-var alpha = 0.6 // 쌍대비교 가중치
+var alpha = 0.5 // 쌍대비교 가중치
 
 func StartMappingConsumer(db *sql.DB, writer *kafka.Writer) {
 	fmt.Println("[Kafka: Mapping] StartMappingConsumer 시작됨")
@@ -240,7 +240,7 @@ func FindClosestPlant(plants []types.Plant, targetLat, targetLon float64) (*type
 }
 
 // 거리(km)를 입력받아 보상 가중치를 계산
-const MaxDistance = 100.0 // 정책에 따라 조정
+const MaxDistance = 325.0 // 정책에 따라 조정
 var MaxPop = 568000.0     // 가장 인구수가 많은 지역 (노원구)
 
 func calcDistWeight(distanceKm float64) float64 {
