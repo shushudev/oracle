@@ -1,5 +1,13 @@
 package consumer
 
+import (
+	"context"
+	"database/sql"
+	"time"
+
+	_ "github.com/lib/pq"
+)
+
 type RewardPolicy struct {
 	BaseReward     float64 // 기본 보상 (coin)
 	UpperLimit     int     // 참여횟수 상한
@@ -32,15 +40,14 @@ func calcReward(base float64, count, upper int) (used int, variable, total float
 	return
 }
 
-
 // 한 건의 투표를 반영하고 보상을 계산한다.
 // 테이블: vote_counters(user_id PK, latest_vote_time TIMESTAMPTZ, vote_count INT)
 func UpdateVoteAndComputeReward(
 	ctx context.Context,
 	db *sql.DB,
 	userID int64,
-	votedAt time.Time,     // 이번 투표 시각
-	policy RewardPolicy,   // {BaseReward, UpperLimit, InactivityDays}
+	votedAt time.Time, // 이번 투표 시각
+	policy RewardPolicy, // {기본적인 보상, 투표 참여 횟수 상한선, 미참여 설정 기간}
 ) (*RewardResult, error) {
 
 	// 직렬화 수준 권장(경쟁 조건 방지)
@@ -54,9 +61,10 @@ func UpdateVoteAndComputeReward(
 		}
 	}()
 
-	// 1) 없는 사용자 row 생성(UPSERT) - 최초 참여 대비
+	// ----- 1) 최초로 진입한 사용자에 대한 테이블의 튜플 삽입 -----
+	// user_id, latest_vote_time = NULL, vote_count = 0으로 설정
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO vote_counters (user_id, latest_vote_time, vote_count)
+		INSERT INTO vote_counters (user_id, latest_vote_time, vote_count) 
 		VALUES ($1, NULL, 0)
 		ON CONFLICT (user_id) DO NOTHING
 	`, userID)
@@ -101,14 +109,6 @@ func UpdateVoteAndComputeReward(
 
 	// 5) 보상 계산
 	used, variable, total := calcReward(policy.BaseReward, curCount, policy.UpperLimit)
-
-	// (선택) 보상 원장에 기록하려면 아래와 같은 테이블을 두고 INSERT 하세요.
-	// reward_ledger(user_id, base_reward, variable_reward, total_reward, vote_count_used, calc_at)
-	// _, _ = tx.ExecContext(ctx, `
-	// 	INSERT INTO reward_ledger
-	// 	  (user_id, base_reward, variable_reward, total_reward, vote_count_used, calc_at)
-	// 	VALUES ($1, $2, $3, $4, $5, now())
-	// `, userID, policy.BaseReward, variable, total, used)
 
 	if err = tx.Commit(); err != nil {
 		return nil, err
