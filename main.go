@@ -23,6 +23,7 @@ func main() {
 	voteWriter := producer.NewVoteMemberWriter()
 	locationWriter := producer.NewLocationWriter()
 	accountCreateWriter := producer.NewAccounCreatetWriter()
+	vmMemberWriter := producer.InitRewardProducer()
 
 	go producer.StartUserMonitor(database, voteWriter)
 
@@ -50,6 +51,8 @@ func main() {
 	go consumer.StartMappingConsumer(database, mappingWriter)
 	go consumer.StartRequestVoteMemberConsumer(database)
 	go consumer.StartLocationConsumer(database, locationWriter)
+	go consumer.StartVMemberRewardConsumer(database, vmMemberWriter)
+
 	log.Println("Server running on :3001")
 	log.Fatal(http.ListenAndServe(":3001", nil))
 	select {}

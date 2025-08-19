@@ -3,8 +3,11 @@ package producer
 import (
 	"oracle/config"
 
+	"github.com/IBM/sarama"
 	"github.com/segmentio/kafka-go"
 )
+
+var RewardProducer sarama.SyncProducer
 
 // 디바이스-주소 매핑 결과를 보내는 Writer
 func NewMappingWriter() *kafka.Writer {
@@ -35,6 +38,14 @@ func NewAccounCreatetWriter() *kafka.Writer { // 회원가입
 	return &kafka.Writer{
 		Addr:     kafka.TCP(config.KafkaBrokers...),
 		Topic:    config.TopicCreateAccountProducer,
+		Balancer: &kafka.LeastBytes{},
+	}
+}
+
+func InitRewardProducer() *kafka.Writer {
+	return &kafka.Writer{
+		Addr:     kafka.TCP(config.KafkaBrokers...),
+		Topic:    config.TopicResultVMemberReward,
 		Balancer: &kafka.LeastBytes{},
 	}
 }
