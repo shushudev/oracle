@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/segmentio/kafka-go"
 
 	"oracle/config"
-	"oracle/producer"
 	"oracle/types"
 )
 
-func StartVMemberRewardConsumer(db *sql.DB) error {
+func StartVMemberRewardConsumer(db *sql.DB, writer *kafka.Writer) error {
 	log.Println("[Kafka: VMember] StartVMemberRewardConsumer")
 
 	cfg := sarama.NewConfig()
@@ -66,21 +66,25 @@ func StartVMemberRewardConsumer(db *sql.DB) error {
 				log.Printf("[VMember] 응답 직렬화 실패: %v", err)
 				continue
 			}
-
 			// 전송
+			producer, err := sarama.NewSyncProducer(config.KafkaBrokers, cfg)
+			if err != nil {
+				log.Printf("[New Sync] 실패 %v", err)
+				continue
+			}
+			defer producer.Close()
+
 			msg := &sarama.ProducerMessage{
-				Topic: config.TopicResultVMemberReward, // 풀노드가 듣는 토픽과 동일
+				Topic: config.TopicResultVMemberReward,
 				Value: sarama.ByteEncoder(body),
-				// (선택) 헤더에 부가 정보
 				Headers: []sarama.RecordHeader{
 					{Key: []byte("fullnode_id"), Value: []byte(req.FullnodeID)},
-					//{Key: []byte("request_id"), Value: []byte(req.RequestID)},
 					{Key: []byte("ts"), Value: []byte(time.Now().UTC().Format(time.RFC3339))},
 				},
 			}
-			if _, _, err := producer.RewardProducer.SendMessage(msg); err != nil {
+			_, _, err = producer.SendMessage(msg)
+			if err != nil {
 				log.Printf("[VMember] 응답 전송 실패: %v", err)
-				continue
 			}
 
 			log.Printf("[VMember] 보상 응답 전송 완료: 대상=%d", len(rewardsMap))

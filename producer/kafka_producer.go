@@ -42,16 +42,10 @@ func NewAccounCreatetWriter() *kafka.Writer { // 회원가입
 	}
 }
 
-func InitRewardProducer(brokers []string) (sarama.SyncProducer, error) {
-	cfg := sarama.NewConfig()
-	cfg.Version = sarama.V2_1_0_0
-	cfg.Producer.Return.Successes = true
-	cfg.Producer.RequiredAcks = sarama.WaitForAll
-
-	p, err := sarama.NewSyncProducer(brokers, cfg)
-	if err != nil {
-		return nil, err
+func InitRewardProducer() *kafka.Writer {
+	return &kafka.Writer{
+		Addr:     kafka.TCP(config.KafkaBrokers...),
+		Topic:    config.TopicResultVMemberReward,
+		Balancer: &kafka.LeastBytes{},
 	}
-	RewardProducer = p
-	return p, nil
 }
