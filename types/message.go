@@ -62,3 +62,16 @@ type AccountRequest struct {
 	NodeID  string `json:"node_id"`
 	Address string `json:"user_address"`
 }
+
+// 풀노드로 부터 보상을 요청 받는 메세지
+type VMemberRequestMessage struct {
+	FullnodeID string   `json:"fullnode_id"` // 요청 보낸 풀노드 ID
+	Validators []string `json:"validators"`
+	Timestamp  string   `json:"timestamp"`
+}
+
+// 풀노드에게 보상금을 전송하는 메세지
+type MemberRewardOutputMessage struct {
+	SenderID string             `json:"sender_id"` // 메시지 송신자 ID
+	Rewards  map[string]float64 `json:"rewards"`   // 주소 -> 보상금
+}

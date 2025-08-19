@@ -1,125 +1,93 @@
+// oracle/reward/reward.go
 package consumer
 
 import (
 	"context"
 	"database/sql"
 	"time"
-
-	_ "github.com/lib/pq"
 )
 
-type RewardPolicy struct {
-	BaseReward     float64 // 기본 보상 (coin)
-	UpperLimit     int     // 참여횟수 상한
-	InactivityDays int     // 미참여 초기화 기준 일수 (예: 7)
+type Policy struct {
+	BaseReward     float64 // 기본 보상
+	UpperLimit     int     // 상한
+	InactivityDays int     // 미참여 초기화 기준 일수
 }
 
-type RewardResult struct {
-	UserID         int64
-	AfterCount     int // 이번 반영 후 vote_count
-	UsedCount      int // 보상 계산에 사용된 카운트(min(count, upper))
-	BaseReward     float64
-	VariableReward float64
-	TotalReward    float64
+func DefaultPolicy() Policy {
+	return Policy{BaseReward: 1.0, UpperLimit: 30, InactivityDays: 7}
 }
 
-// 보상식: 기본 보상금 + 참여횟수 X 0.1 X 기본 보상금
-/*
-	count : 투표 횟수
-	upper : 투표 횟수 상한선
-	used : 계산에 반영할 최종 투표 횟수
-*/
-func calcReward(base float64, count, upper int) (used int, variable, total float64) {
-	if count < upper {
-		used = count
-	} else {
-		used = upper
+func ComputeRewards(ctx context.Context, db *sql.DB, addrs []string, policy Policy) (map[string]float64, error) {
+	now := time.Now().UTC()
+	out := make(map[string]float64, len(addrs))
+	for _, addr := range unique(addrs) {
+		r, err := computeOne(ctx, db, addr, now, policy)
+		if err != nil {
+			return nil, err
+		}
+		out[addr] = r
 	}
-	variable = float64(used) * (0.1 * base)
-	total = base + variable
-	return
+	return out, nil
 }
 
-// 한 건의 투표를 반영하고 보상을 계산한다.
-// 테이블: vote_counters(user_id PK, latest_vote_time TIMESTAMPTZ, vote_count INT)
-func UpdateVoteAndComputeReward(
-	ctx context.Context,
-	db *sql.DB,
-	userID int64,
-	votedAt time.Time, // 이번 투표 시각
-	policy RewardPolicy, // {기본적인 보상, 투표 참여 횟수 상한선, 미참여 설정 기간}
-) (*RewardResult, error) {
-
-	// 직렬화 수준 권장(경쟁 조건 방지)
+func computeOne(ctx context.Context, db *sql.DB, addr string, now time.Time, p Policy) (float64, error) {
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
+
+	var last sql.NullTime
+	var cnt int
+	// 테이블명/컬럼명은 실제 스키마에 맞춰 변경
+	row := tx.QueryRowContext(ctx, `SELECT last_date, count FROM vote_counter WHERE address=$1 FOR UPDATE`, addr)
+	scanErr := row.Scan(&last, &cnt)
+	if scanErr == sql.ErrNoRows {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO vote_counter(address,last_date,count) VALUES($1,NULL,0)`, addr); err != nil {
+			return 0, err
 		}
-	}()
-
-	// ----- 1) 최초로 진입한 사용자에 대한 테이블의 튜플 삽입 -----
-	// user_id, latest_vote_time = NULL, vote_count = 0으로 설정
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO vote_counters (user_id, latest_vote_time, vote_count) 
-		VALUES ($1, NULL, 0)
-		ON CONFLICT (user_id) DO NOTHING
-	`, userID)
-	if err != nil {
-		return nil, err
+		cnt = 0
+		last.Valid = false
+	} else if scanErr != nil {
+		return 0, scanErr
 	}
 
-	// 2) 행 잠금 후 현재 상태 조회
-	var (
-		curLatest sql.NullTime
-		curCount  int
-	)
-	err = tx.QueryRowContext(ctx, `
-		SELECT latest_vote_time, vote_count
-		FROM vote_counters
-		WHERE user_id = $1
-		FOR UPDATE
-	`, userID).Scan(&curLatest, &curCount)
-	if err != nil {
-		return nil, err
+	// 미참여 초기화
+	if last.Valid && now.Sub(last.Time) >= time.Duration(p.InactivityDays)*24*time.Hour {
+		cnt = 0
 	}
 
-	// 3) 미참여 초기화 규칙
-	if curLatest.Valid {
-		inactive := votedAt.Sub(curLatest.Time)
-		if inactive >= (time.Duration(policy.InactivityDays) * 24 * time.Hour) {
-			curCount = 0 // 초기화
+	// 이번 참여 반영
+	cnt++
+
+	used := cnt
+	if used > p.UpperLimit {
+		used = p.UpperLimit
+	}
+
+	total := p.BaseReward + float64(used)*0.1*p.BaseReward
+
+	if _, err := tx.ExecContext(ctx, `UPDATE vote_counter SET last_date=$2, count=$3 WHERE address=$1`, addr, now, cnt); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+func unique(in []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if s == "" {
+			continue
 		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
 	}
-
-	// 4) 이번 참여 반영
-	curCount += 1
-	_, err = tx.ExecContext(ctx, `
-		UPDATE vote_counters
-		SET latest_vote_time = $2,
-		    vote_count       = $3
-		WHERE user_id = $1
-	`, userID, votedAt, curCount)
-	if err != nil {
-		return nil, err
-	}
-
-	// 5) 보상 계산
-	used, variable, total := calcReward(policy.BaseReward, curCount, policy.UpperLimit)
-
-	if err = tx.Commit(); err != nil {
-		return nil, err
-	}
-
-	return &RewardResult{
-		UserID:         userID,
-		AfterCount:     curCount,
-		UsedCount:      used,
-		BaseReward:     policy.BaseReward,
-		VariableReward: variable,
-		TotalReward:    total,
-	}, nil
+	return out
 }
