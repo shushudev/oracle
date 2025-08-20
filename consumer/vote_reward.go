@@ -4,6 +4,7 @@ package consumer
 import (
 	"context"
 	"database/sql"
+	"log"
 	"oracle/config"
 	"time"
 )
@@ -19,7 +20,7 @@ type Policy struct {
 
 func DefaultPolicy() Policy {
 	return Policy{
-		R0:             1.0,
+		R0:             1.0, // 1 기본 보상 + a
 		Beta:           0.5,
 		RStart:         0.5,
 		InactivityDays: 7,
@@ -28,7 +29,7 @@ func DefaultPolicy() Policy {
 }
 
 // 필요시 실제 스키마에 맞게 수정하세요.
-const userTable = "users" // 만약 테이블이 "user"라면 쌍따옴표로 감싸서 사용: FROM \"user\"
+// const userTable = "users" // 만약 테이블이 "user"라면 쌍따옴표로 감싸서 사용: FROM \"user\"
 
 // ComputeRewards: 라운드 단위로 n, N을 먼저 구해 BaseReward를 공통 산출
 func ComputeRewards(ctx context.Context, db *sql.DB, addrs []string, policy Policy) (map[string]float64, error) {
@@ -38,14 +39,16 @@ func ComputeRewards(ctx context.Context, db *sql.DB, addrs []string, policy Poli
 	n := len(uniq)
 
 	// N: 전체 유저 수
-	var N int
+	var N int = config.LightNodeUser
 	// 주: 실제 테이블명이 "user"면 다음 쿼리를 `SELECT COUNT(*) FROM "user"`로 바꾸세요.
 	//if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+userTable).Scan(&N); err != nil {
 	//	return nil, err
 	//}
-	N = config.LightNodeUser
 	// 참여율 기반 BaseReward 계산 (γ=1 고정 → 선형)
 	base := computeBaseRewardFromParticipation(n, N, policy)
+
+	log.Printf("[Reward] 참여율: %.2f (n=%d, N=%d), 산출 BaseReward=%.4f, Policy={R0=%.2f, Beta=%.2f, RStart=%.2f}",
+		float64(n)/float64(N), n, N, base, policy.R0, policy.Beta, policy.RStart)
 
 	out := make(map[string]float64, len(uniq))
 	for _, addr := range uniq {
@@ -54,6 +57,7 @@ func ComputeRewards(ctx context.Context, db *sql.DB, addrs []string, policy Poli
 			return nil, err
 		}
 		out[addr] = r
+		log.Printf("[Reward] Address=%s 지급 BaseReward=%.4f", addr, r)
 	}
 	return out, nil
 }
