@@ -4,6 +4,7 @@ package consumer
 import (
 	"context"
 	"database/sql"
+	"oracle/config"
 	"time"
 )
 
@@ -39,10 +40,10 @@ func ComputeRewards(ctx context.Context, db *sql.DB, addrs []string, policy Poli
 	// N: 전체 유저 수
 	var N int
 	// 주: 실제 테이블명이 "user"면 다음 쿼리를 `SELECT COUNT(*) FROM "user"`로 바꾸세요.
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+userTable).Scan(&N); err != nil {
-		return nil, err
-	}
-
+	//if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+userTable).Scan(&N); err != nil {
+	//	return nil, err
+	//}
+	N = config.LightNodeUser
 	// 참여율 기반 BaseReward 계산 (γ=1 고정 → 선형)
 	base := computeBaseRewardFromParticipation(n, N, policy)
 

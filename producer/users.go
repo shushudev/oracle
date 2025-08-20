@@ -64,6 +64,7 @@ func StartUserMonitor(db *sql.DB, writer *kafka.Writer) {
 			err := PublishUserCount(writer, count)
 			if err == nil {
 				lastCount = count
+				config.LightNodeUser = lastCount
 			}
 		}
 	}

@@ -23,5 +23,6 @@ var (
 	GroupVoteListen        = "vote-member-listen-group"
 
 	// database
-	Dsn = "postgres://capstone2:block1234@postgres:5432/user_info?sslmode=disable"
+	Dsn           = "postgres://capstone2:block1234@postgres:5432/user_info?sslmode=disable"
+	LightNodeUser = 0
 )
