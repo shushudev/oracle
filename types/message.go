@@ -75,3 +75,7 @@ type MemberRewardOutputMessage struct {
 	SenderID string             `json:"sender_id"` // 메시지 송신자 ID
 	Rewards  map[string]float64 `json:"rewards"`   // 주소 -> 보상금
 }
+
+type TxHashRequest struct {
+	Address string `json:"user_address"`
+}

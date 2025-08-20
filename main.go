@@ -24,6 +24,7 @@ func main() {
 	locationWriter := producer.NewLocationWriter()
 	accountCreateWriter := producer.NewAccounCreatetWriter()
 	vmMemberWriter := producer.InitRewardProducer()
+	txHashWriter := producer.NewTxHashWriter()
 
 	go producer.StartUserMonitor(database, voteWriter)
 
@@ -47,12 +48,12 @@ func main() {
 		api.VerifyHandler(database)(w, r) // VerifyHandler는 connect/verify.go에 구현
 	})
 
-	// ✅ 세 개의 Kafka Consumer 실행
-	go consumer.StartMappingConsumer(database, mappingWriter)
-	go consumer.StartRequestVoteMemberConsumer(database)
-	go consumer.StartLocationConsumer(database, locationWriter)
-	go consumer.StartVMemberRewardConsumer(database, vmMemberWriter)
-	go consumer.StartTxHashConsumer(database)
+	go consumer.StartMappingConsumer(database, mappingWriter)        // device Id -> address
+	go consumer.StartRequestVoteMemberConsumer(database)             // 유권자 수 전송
+	go consumer.StartLocationConsumer(database, locationWriter)      // 위치정보 요청
+	go consumer.StartVMemberRewardConsumer(database, vmMemberWriter) // 서명자 보상
+	go consumer.StartTxHashConsumer(database)                        // tx hash값 저장
+	go consumer.StartRequestTxHashConsumer(database, txHashWriter)
 	log.Println("Server running on :3001")
 	log.Fatal(http.ListenAndServe(":3001", nil))
 	select {}

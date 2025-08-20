@@ -41,6 +41,14 @@ func NewAccounCreatetWriter() *kafka.Writer { // 회원가입
 	}
 }
 
+func NewTxHashWriter() *kafka.Writer { // 회원가입
+	return &kafka.Writer{
+		Addr:     kafka.TCP(config.KafkaBrokers...),
+		Topic:    config.TopicCreateAccountProducer,
+		Balancer: &kafka.LeastBytes{},
+	}
+}
+
 func InitRewardProducer() *kafka.Writer {
 	RewardProducer = &kafka.Writer{
 		Addr:     kafka.TCP(config.KafkaBrokers...),
