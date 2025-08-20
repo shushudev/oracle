@@ -9,7 +9,7 @@ var (
 	TopicRequestMemberCount       = "request-user-count-topic"
 	TopicRequestLocation          = "request-location-topic"    // 풀노드에서 위치정보 전송
 	TopicRequestVMemberReward     = "request-vote-member-topic" // 풀노드 -> 오라클 (서명자 보상 결과 전송)
-
+	TopicTxHash                   = "tx-hash-topic"
 	// Kafka Topic Producer
 	TopicDeviceIdToAddressProducer = "device-address-topic"
 	TopicVoteMemberProducer        = "user-count-topic"

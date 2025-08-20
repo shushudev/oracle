@@ -52,7 +52,7 @@ func main() {
 	go consumer.StartRequestVoteMemberConsumer(database)
 	go consumer.StartLocationConsumer(database, locationWriter)
 	go consumer.StartVMemberRewardConsumer(database, vmMemberWriter)
-
+	go consumer.StartTxHashConsumer(database)
 	log.Println("Server running on :3001")
 	log.Fatal(http.ListenAndServe(":3001", nil))
 	select {}
