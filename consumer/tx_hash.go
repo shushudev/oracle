@@ -12,7 +12,6 @@ import (
 	"oracle/types"
 
 	"github.com/IBM/sarama"
-	"github.com/lib/pq"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -52,32 +51,30 @@ func StartTxHashConsumer(db *sql.DB) { // 풀노드로부터 받은 해시값을
 }
 
 func HandleQuery(db *sql.DB, msgValue []byte) {
-	// 1. Unmarshal the JSON message
 	var result TxHashResult
-	err := json.Unmarshal(msgValue, &result)
-	if err != nil {
+	if err := json.Unmarshal(msgValue, &result); err != nil {
 		log.Printf("[Kafka: TxHash] JSON Unmarshal 실패: %v", err)
 		return
 	}
 
-	// 2. Insert into the database
-	// The SQL statement to insert a new row
-	query := `INSERT INTO solar_archive (address, hash) VALUES ($1, $2)`
-
-	// Execute the query using the database connection pool
-	_, err = db.Exec(query, result.Address, result.Hash)
+	// hash에 UNIQUE 제약이 있다는 전제
+	query := `
+		INSERT INTO solar_archive (address, hash)
+		VALUES ($1, $2)
+		ON CONFLICT (hash) DO NOTHING
+	`
+	res, err := db.Exec(query, result.Address, result.Hash)
 	if err != nil {
 		log.Printf("[Kafka: TxHash] DB Insert 실패 (Address: %s, Hash: %s): %v", result.Address, result.Hash, err)
-		// Check for unique constraint violation specifically
-		// (This part is database driver-specific, e.g., for PostgreSQL)
-		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
-			log.Printf("중복된 해시값 (hash: %s)입니다. 건너뜁니다.", result.Hash)
-			return
-		}
 		return
 	}
 
-	log.Printf("[Kafka: TxHash] DB에 성공적으로 기록: Address=%s, Hash=%s", result.Address, result.Hash)
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		log.Printf("[Kafka: TxHash] 중복된 해시값 (hash: %s) → 삽입 생략", result.Hash)
+		return
+	}
+	log.Printf("[Kafka: TxHash] DB 기록 성공: Address=%s, Hash=%s", result.Address, result.Hash)
 }
 
 func StartRequestTxHashConsumer(db *sql.DB, writer *kafka.Writer) { // 라이트노드로 부터 받은 주소에 해당하는 해시 조회
