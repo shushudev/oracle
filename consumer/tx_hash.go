@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"oracle/config"
+	"strconv"
+	"strings"
 
 	"oracle/types"
 
@@ -107,6 +109,131 @@ func StartRequestTxHashConsumer(db *sql.DB, writer *kafka.Writer) { // 라이트
 	}()
 }
 
+type tmTxRPC struct {
+	Result struct {
+		Hash     string `json:"hash"`
+		Height   string `json:"height"`
+		TxResult struct {
+			Code int    `json:"code"`
+			Log  string `json:"log"` // JSON 문자열
+		} `json:"tx_result"`
+	} `json:"result"`
+}
+
+type logRoot []struct {
+	Events []struct {
+		Type       string `json:"type"`
+		Attributes []struct {
+			Key   string  `json:"key"`
+			Value *string `json:"value"`
+		} `json:"attributes"`
+	} `json:"events"`
+}
+
+// ── 2) 모바일용 최소 필드 ───────────────────────────────────────────────
+
+type TxBrief struct {
+	Height      string  `json:"height"`
+	TxHash      string  `json:"txhash"`
+	DeviceID    string  `json:"device_id,omitempty"`
+	Timestamp   string  `json:"timestamp,omitempty"`
+	TotalEnergy float64 `json:"total_energy,omitempty"`
+	Latitude    float64 `json:"latitude,omitempty"`
+	Longitude   float64 `json:"longitude,omitempty"`
+}
+
+func QueryTxBriefViaRPC(rpcHost string, rpcPort int, hash string) (*TxBrief, error) {
+	// Tendermint RPC: 0x 접두사 필수
+	url := fmt.Sprintf("http://%s:%d/tx?hash=0x%s", rpcHost, rpcPort, strings.ToUpper(hash))
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("http get: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// 1차 언마샬 (RPC)
+	var rpc tmTxRPC
+	if err := json.Unmarshal(body, &rpc); err != nil {
+		return nil, fmt.Errorf("rpc unmarshal: %w", err)
+	}
+	if rpc.Result.TxResult.Code != 0 {
+		return nil, fmt.Errorf("tx failed: code=%d", rpc.Result.TxResult.Code)
+	}
+
+	// 2차 언마샬 (log 문자열)
+	var logs logRoot
+	if err := json.Unmarshal([]byte(rpc.Result.TxResult.Log), &logs); err != nil {
+		return nil, fmt.Errorf("log unmarshal: %w", err)
+	}
+
+	out := &TxBrief{
+		Height: rpc.Result.Height,
+		TxHash: rpc.Result.Hash,
+	}
+
+	// light_tx_solar 이벤트에서 필요한 속성만 추출
+	for _, entry := range logs {
+		for _, ev := range entry.Events {
+			if ev.Type != "light_tx_solar" {
+				continue
+			}
+			// attr map
+			var (
+				deviceID, ts          string
+				latStr, lonStr, teStr string
+			)
+			for _, a := range ev.Attributes {
+				key := a.Key
+				val := ""
+				if a.Value != nil {
+					val = *a.Value
+				}
+				switch key {
+				case "device_id":
+					deviceID = val
+				case "timestamp":
+					ts = val
+				case "total_energy":
+					teStr = val
+				case "latitude":
+					latStr = val
+				case "longitude":
+					lonStr = val
+				}
+			}
+
+			out.DeviceID = deviceID
+			out.Timestamp = ts
+
+			if teStr != "" {
+				if f, err := strconv.ParseFloat(teStr, 64); err == nil {
+					out.TotalEnergy = f
+				}
+			}
+			if latStr != "" {
+				if f, err := strconv.ParseFloat(latStr, 64); err == nil {
+					out.Latitude = f
+				}
+			}
+			if lonStr != "" {
+				if f, err := strconv.ParseFloat(lonStr, 64); err == nil {
+					out.Longitude = f
+				}
+			}
+			// 첫 solar 이벤트만 사용
+			return out, nil
+		}
+	}
+	// solar 이벤트가 없으면 최소 필드만 반환
+	return out, nil
+}
+
 func HandleResponseQuery(db *sql.DB, msgValue []byte) {
 	// 1. Unmarshal (라이트노드에서 넘어온 요청)
 	var req types.TxHashRequest
@@ -128,12 +255,14 @@ func HandleResponseQuery(db *sql.DB, msgValue []byte) {
 
 	// 3. 각 해시별로 LCD 호출
 	for _, h := range hashes {
-		res, err := QueryTxByHashLCD(h)
+		brief, err := QueryTxBriefViaRPC("192.168.0.19", 26657, h)
 		if err != nil {
 			log.Printf("[Kafka: TxHashResponse] 해시 %s 조회 실패: %v", h, err)
 			continue
 		}
-		log.Printf("[Kafka: TxHashResponse] 조회 성공 (Hash=%s): %s", h, res)
+		b, _ := json.Marshal(brief)
+
+		log.Printf("[Kafka: TxHashResponse] 조회 성공 (Hash=%s): %s", h, string(b))
 	}
 }
 
@@ -154,19 +283,4 @@ func GetTxHashesByAddress(db *sql.DB, address string) ([]string, error) {
 		hashes = append(hashes, hash)
 	}
 	return hashes, nil
-}
-
-func QueryTxByHashLCD(hash string) (string, error) {
-	url := fmt.Sprintf("http://192.168.0.19:1317/txs/%s", hash)
-	resp, err := http.Get(url)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	return string(body), nil
 }
