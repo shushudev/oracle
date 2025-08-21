@@ -17,7 +17,7 @@ import (
 	"oracle/types"
 )
 
-var alpha = 0.5 // 쌍대비교 가중치
+var alpha = 0.5 // 상대비교 가중치
 
 func StartMappingConsumer(db *sql.DB, writer *kafka.Writer) {
 	fmt.Println("[Kafka: Mapping] StartMappingConsumer 시작됨")

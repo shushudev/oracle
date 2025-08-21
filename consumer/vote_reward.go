@@ -19,8 +19,9 @@ type Policy struct {
 }
 
 func DefaultPolicy() Policy {
+
 	return Policy{
-		R0:             1.0, // 시간대: 이사량이 낮은 시간대 6시 11시 : 1 11시 ~ 14시 :2 14시 ~ 17시 : 1
+		R0:             config.KMAAverage,
 		Beta:           0.5,
 		RStart:         0.5,
 		InactivityDays: 7,

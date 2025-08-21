@@ -17,7 +17,17 @@ import (
 
 func StartVMemberRewardConsumer(db *sql.DB, writer *kafka.Writer) error {
 	log.Println("[Kafka: VMember] StartVMemberRewardConsumer")
-
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		err := SaveSolarRadiationJSON(ctx)
+		cancel()
+		if err != nil {
+			log.Printf("[WARN] initial KMA average load failed: %v", err)
+		} else {
+			log.Printf("[BOOT] KMAAverage=%.6f", config.KMAAverage)
+		}
+	}
+	StartSolarAverageScheduler(context.Background())
 	cfg := sarama.NewConfig()
 	cfg.Version = sarama.V2_1_0_0
 
