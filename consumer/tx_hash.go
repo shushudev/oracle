@@ -1,6 +1,7 @@
 package consumer
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -8,10 +9,10 @@ import (
 	"log"
 	"net/http"
 	"oracle/config"
+	"oracle/types"
 	"strconv"
 	"strings"
-
-	"oracle/types"
+	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/segmentio/kafka-go"
@@ -104,7 +105,7 @@ func StartRequestTxHashConsumer(db *sql.DB, writer *kafka.Writer) { // 라이트
 			fmt.Printf("[Kafka: Light TxHash] 수신 메시지: %s\n", string(msg.Value))
 
 			// 메시지를 처리하는 기존 로직 호출
-			HandleResponseQuery(db, msg.Value)
+			HandleResponseQuery(db, msg.Value, writer)
 		}
 	}()
 }
@@ -133,6 +134,7 @@ type logRoot []struct {
 // ── 2) 모바일용 최소 필드 ───────────────────────────────────────────────
 
 type TxBrief struct {
+	Address     string  `json:"address"`
 	Height      string  `json:"height"`
 	TxHash      string  `json:"txhash"`
 	DeviceID    string  `json:"device_id,omitempty"`
@@ -211,6 +213,8 @@ func QueryTxBriefViaRPC(rpcHost string, rpcPort int, hash string) (*TxBrief, err
 			out.DeviceID = deviceID
 			out.Timestamp = ts
 
+			out.Address = ""
+
 			if teStr != "" {
 				if f, err := strconv.ParseFloat(teStr, 64); err == nil {
 					out.TotalEnergy = f
@@ -234,7 +238,11 @@ func QueryTxBriefViaRPC(rpcHost string, rpcPort int, hash string) (*TxBrief, err
 	return out, nil
 }
 
-func HandleResponseQuery(db *sql.DB, msgValue []byte) {
+func HandleResponseQuery(db *sql.DB, msgValue []byte, writer *kafka.Writer) {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	// 1. Unmarshal (라이트노드에서 넘어온 요청)
 	var req types.TxHashRequest
 	if err := json.Unmarshal(msgValue, &req); err != nil {
@@ -260,9 +268,20 @@ func HandleResponseQuery(db *sql.DB, msgValue []byte) {
 			log.Printf("[Kafka: TxHashResponse] 해시 %s 조회 실패: %v", h, err)
 			continue
 		}
+		brief.Address = req.Address
+
 		b, _ := json.Marshal(brief)
 
 		log.Printf("[Kafka: TxHashResponse] 조회 성공 (Hash=%s): %s", h, string(b))
+
+		if writer != nil {
+			if err := writer.WriteMessages(ctx, kafka.Message{
+				Key:   []byte(req.Address), // 같은 주소는 같은 파티션
+				Value: b,
+			}); err != nil {
+				log.Printf("[Kafka: TxHashResponse] Kafka 전송 실패 (hash=%s): %v", h, err)
+			}
+		}
 	}
 }
 
