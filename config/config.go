@@ -26,4 +26,11 @@ var (
 	// database
 	Dsn           = "postgres://capstone2:block1234@postgres:5432/user_info?sslmode=disable"
 	LightNodeUser = 0
+
+	KMAAuthKey        = "ttruCV71S-aa7gle9ZvmFA"
+	KMAAPIURL         = "https://apihub.kma.go.kr/api/typ01/url/kma_sfctm2.php"
+	KMAStationDefault = "ALL"                  // 기본 전체 지점 조회
+	KMABackoffHours   = 3                      // 직전 정시부터 최대 6시간 과거 자동 탐색
+	KMAOutputPath     = "solar_radiation.json" // 기본 출력 파일
+	KMAAverage        float64
 )
