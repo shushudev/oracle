@@ -41,10 +41,10 @@ func NewAccounCreatetWriter() *kafka.Writer { // 회원가입
 	}
 }
 
-func NewTxHashWriter() *kafka.Writer { // 회원가입
+func NewTxHashWriter() *kafka.Writer {
 	return &kafka.Writer{
 		Addr:     kafka.TCP(config.KafkaBrokers...),
-		Topic:    config.TopicCreateAccountProducer,
+		Topic:    config.TopicResultTxhashProducer,
 		Balancer: &kafka.LeastBytes{},
 	}
 }
