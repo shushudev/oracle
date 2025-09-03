@@ -18,23 +18,6 @@ import (
 	conf "oracle/config"
 )
 
-/*
-환경변수(우선순위: 환경변수 > config 기본값)
-- KMA_AUTH_KEY       : (권장) apihub 인증키. 없으면 conf.KMAAuthKey 사용
-- KMA_STN            : "108" 또는 "ALL" (미지정 시 conf.KMAStationDefault)
-- KMA_TM             : 조회 시각 YYYYMMDDHHMI (예: 202508210900). 미지정 시 직전 정시부터 백오프
-- KMA_BACKOFF_HOURS  : 직전 정시부터 과거로 최대 탐색(기본 conf.KMABackoffHours)
-- KMA_OUT_PATH       : 출력 JSON 경로(기본 conf.KMAOutputPath)
-
-설계:
-- "ALL" 모드일 때 전체 지점 수집 순서:
-  (1) stn 미지정 → 성공 시 사용
-  (2) stn=0      → 성공 시 사용
-  (둘 다 실패 시 에러; 지점 리스트는 사용하지 않음)
-
-- JSON은 기록용. 수집된 레코드에서 SI(nil 제외, 즉 음수 원데이터 제외) 평균을 계산해 conf.KMAAverage에 저장.
-*/
-
 // ===== 환경 변수 키 =====
 const (
 	envAuthKey      = "KMA_AUTH_KEY"
@@ -81,7 +64,7 @@ func SaveSolarRadiationJSON(ctx context.Context) error {
 			usedTM = tmTry
 			break
 		}
-		if cfg.FixedTM != "" { // 고정 tm이면 한 번만 시도
+		if cfg.FixedTM != "" { // 고정 tm 이면 한 번만 시도
 			break
 		}
 	}
@@ -351,7 +334,6 @@ func collectSingleStationForTM(ctx context.Context, authKey, tm, stn string) ([]
 }
 
 func collectAllStationsForTM(ctx context.Context, authKey, tm string) ([]SolarRecord, error) {
-	// (1) stn 미지정
 	{
 		params := map[string]string{
 			"tm":      tm,
