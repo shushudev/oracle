@@ -92,7 +92,17 @@ func SaveSolarRadiationJSON(ctx context.Context) error {
 	}
 
 	fmt.Printf("[OK] %d records saved to %s (tm=%s)\n", len(all), out, usedTM)
+
+	// 🔽🔽🔽 바로 여기 추가 🔽🔽🔽
+	fmt.Printf("[REGION] joining %d records (tm=%s)\n", len(all), usedTM)
+	if err := JoinAndAggregateByRegion(all /* []SolarRecord */, usedTM); err != nil {
+		fmt.Printf("[REGION][ERROR] %v\n", err)
+	} else {
+		fmt.Printf("[REGION] wrote files:\n  - %s\n  - %s\n  - %s\n",
+			conf.KMAStationRegionOut, conf.KMAJoinedOutPath, conf.KMARegionAggOutPath)
+	}
 	return nil
+
 }
 
 // ---- 평균 계산 헬퍼 ----
