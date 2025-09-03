@@ -45,4 +45,24 @@ var (
 
 	// 권역 스킴 (예: "Sido17" = 시·도 단위, "Macro6" = 수도권/강원권/충청권/호남권/영남권/제주권)
 	RegionScheme = "Sido17"
+
+	// ---------------- 기본 보상에 대한 수식 사용 ====================
+	EnableInverse = false
+	Bscale        = 1.0
+
+	Q_L = 0.10
+	Q_H = 0.90
+
+	RequestedRegions = map[string]bool{
+		"서울특별시":   true,
+		"경기도":     true,
+		"제주특별시":   true,
+		"대구/경상북도": true,
+		"대전/충청남도": true,
+		"충청북도":    true,
+		"부산/경상남도": true,
+		"광주/전라남도": true,
+		"전라북도":    true,
+		"강원도":     true,
+	}
 )
