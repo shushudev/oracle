@@ -36,17 +36,17 @@ type JoinedObservation struct {
 	Irradiance *float64 `json:"일사량"` // MJ/m^2; 결측은 null
 }
 
-// ---------- 산출: 권역별 집계(우선 평균) ----------
+// ---------- 산출: 권역별 집계 ----------
 type RegionAggregate struct {
-	Time        string  `json:"관측시간"`
-	Region      string  `json:"권역"`
-	SampleCount int     `json:"표본수"`
-	MeanSI      float64 `json:"평균일사량"`
+	Time           string   `json:"관측시간"`
+	Region         string   `json:"권역"`
+	SampleCount    int      `json:"표본수"`
+	SampleStations []string `json:"표본지점"` // ← 추가: 집계에 포함된 관측지점 ID 목록
+	MeanSI         float64  `json:"평균일사량"`
 }
 
-// SaveSolarRadiationJSON에서 만든 rows([]SolarRow)와 동일 패키지이므로 접근 가능
+// SaveSolarRadiationJSON에서 만든 rows([]SolarRecord)와 동일 패키지이므로 접근 가능
 // tm은 SaveSolarRadiationJSON 내에서 쓰던 관측 기준 시각 문자열
-
 func JoinAndAggregateByRegion(rows []SolarRecord, tm string) error {
 	// 1) 관측소 메타 로드
 	stations, err := loadStations(conf.KMAStationsPath)
@@ -83,7 +83,7 @@ func JoinAndAggregateByRegion(rows []SolarRecord, tm string) error {
 			StationID:  row.Station,
 			Name:       meta.Name,
 			Address:    meta.Address,
-			Region:     deriveRegion(meta.Address, conf.RegionScheme),
+			Region:     deriveRegion(meta.Address, conf.RegionScheme), // 내부에서 bucketRegion 사용
 			Time:       row.Time,
 			Irradiance: row.SI,
 		})
@@ -92,7 +92,7 @@ func JoinAndAggregateByRegion(rows []SolarRecord, tm string) error {
 		return fmt.Errorf("write joined: %w", err)
 	}
 
-	// 3) 권역별 집계(평균)
+	// 3) 권역별 집계(평균 + 표본 지점 ID)
 	agg := aggregateByRegion(joined)
 	sort.SliceStable(agg, func(i, j int) bool {
 		if agg[i].Time == agg[j].Time {
@@ -131,82 +131,69 @@ func loadStations(path string) (map[string]StationMeta, error) {
 	return m, nil
 }
 
-// 주소 첫 토큰(시/도)을 기준으로 권역 추론
-func deriveRegion(address, scheme string) string {
-	first := firstToken(strings.TrimSpace(address))
-	if first == "" {
-		return "UNKNOWN"
-	}
-	if scheme == "Sido17" {
-		return normalizeSido(first)
-	}
-	// Macro6 (수도/강원/충청/호남/영남/제주)
-	sido := normalizeSido(first)
+// ---------- 권역 분류 ----------
+func bucketRegion(addr string) string {
+	a := strings.ReplaceAll(addr, " ", "")
 	switch {
-	case matchAny(sido, "서울특별시", "경기도", "인천광역시"):
-		return "수도권"
-	case matchAny(sido, "강원특별자치도", "강원도"):
-		return "강원권"
-	case matchAny(sido, "충청북도", "충청남도", "세종특별자치시", "대전광역시"):
-		return "충청권"
-	case matchAny(sido, "전라북도", "전라남도", "광주광역시"):
-		return "호남권"
-	case matchAny(sido, "경상북도", "경상남도", "대구광역시", "부산광역시", "울산광역시"):
-		return "영남권"
-	case matchAny(sido, "제주특별자치도", "제주도"):
-		return "제주권"
+	case strings.Contains(a, "서울"):
+		return "서울특별시"
+	case strings.Contains(a, "경기도"), strings.Contains(a, "인천"):
+		return "경기도"
+	case strings.Contains(a, "제주"):
+		return "제주특별시"
+	case strings.Contains(a, "대구"), strings.Contains(a, "경상북도"), strings.Contains(a, "경북"):
+		return "대구/경상북도"
+	case strings.Contains(a, "대전"), strings.Contains(a, "충청남도"), strings.Contains(a, "충남"), strings.Contains(a, "세종"):
+		return "대전/충청남도"
+	case strings.Contains(a, "충청북도"), strings.Contains(a, "충북"):
+		return "충청북도"
+	case strings.Contains(a, "부산"), strings.Contains(a, "경상남도"), strings.Contains(a, "경남"), strings.Contains(a, "울산"):
+		return "부산/경상남도"
+	case strings.Contains(a, "광주"), strings.Contains(a, "전라남도"), strings.Contains(a, "전남"):
+		return "광주/전라남도"
+	case strings.Contains(a, "전라북도"), strings.Contains(a, "전북"):
+		return "전라북도"
+	case strings.Contains(a, "강원특별자치도"), strings.Contains(a, "강원"):
+		return "강원도"
 	default:
-		return "UNKNOWN"
+		return "기타/미분류"
 	}
 }
 
-func firstToken(addr string) string {
-	seps := []string{" ", "(", ")", ",", "·"}
-	for _, sp := range seps {
-		if i := strings.Index(addr, sp); i > 0 {
-			return addr[:i]
-		}
+// 주소 → 권역 추론: 요구 사항에 따라 bucketRegion 규칙을 사용
+func deriveRegion(address, _ string) string {
+	if strings.TrimSpace(address) == "" {
+		return "기타/미분류"
 	}
-	return addr
-}
-
-func normalizeSido(s string) string {
-	s = strings.TrimSpace(s)
-	repl := map[string]string{
-		"강원도": "강원특별자치도",
-		"제주도": "제주특별자치도",
-	}
-	if v, ok := repl[s]; ok {
-		return v
-	}
-	return s
-}
-
-func matchAny(s string, list ...string) bool {
-	for _, v := range list {
-		if s == v {
-			return true
-		}
-	}
-	return false
+	return bucketRegion(address)
 }
 
 func aggregateByRegion(joined []JoinedObservation) []RegionAggregate {
 	type key struct{ t, r string }
+
 	sum := map[key]float64{}
 	cnt := map[key]int{}
+	stations := map[key]map[string]struct{}{} // 권역-시간별 지점ID 집합(중복 제거)
 
 	for _, x := range joined {
 		if x.Irradiance == nil {
 			continue
 		}
 		r := strings.TrimSpace(x.Region)
-		if r == "" || r == "UNKNOWN" {
-			continue // 필요 시 포함 가능
+		// 필요 시 "기타/미분류"도 포함하려면 아래 조건을 완화하세요.
+		if r == "" || r == "UNKNOWN" || r == "기타/미분류" {
+			continue
 		}
 		k := key{t: x.Time, r: r}
 		sum[k] += *x.Irradiance
 		cnt[k]++
+		if stations[k] == nil {
+			stations[k] = make(map[string]struct{})
+		}
+		id := strings.TrimSpace(x.StationID)
+		if id != "" {
+			stations[k][id] = struct{}{}
+		}
 	}
 
 	out := make([]RegionAggregate, 0, len(sum))
@@ -215,11 +202,19 @@ func aggregateByRegion(joined []JoinedObservation) []RegionAggregate {
 		if c == 0 {
 			continue
 		}
+		// 지점ID 목록 정렬
+		ids := make([]string, 0, len(stations[k]))
+		for id := range stations[k] {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+
 		out = append(out, RegionAggregate{
-			Time:        k.t,
-			Region:      k.r,
-			SampleCount: c,
-			MeanSI:      s / float64(c),
+			Time:           k.t,
+			Region:         k.r,
+			SampleCount:    c,
+			SampleStations: ids, // ← 추가 필드
+			MeanSI:         s / float64(c),
 		})
 	}
 	return out
