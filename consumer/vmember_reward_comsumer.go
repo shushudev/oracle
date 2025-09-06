@@ -16,7 +16,6 @@ import (
 )
 
 func StartVMemberRewardConsumer(db *sql.DB, writer *kafka.Writer) error {
-	log.Println("[Kafka: VMember] StartVMemberRewardConsumer")
 	{
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		err := SaveSolarRadiationJSON(ctx)
@@ -24,7 +23,7 @@ func StartVMemberRewardConsumer(db *sql.DB, writer *kafka.Writer) error {
 		if err != nil {
 			log.Printf("[WARN] initial KMA average load failed: %v", err)
 		} else {
-			log.Printf("[BOOT] KMAAverage=%.6f", config.KMAAverage)
+			log.Printf("[R0] %.6f", config.R_0) // 전역변수 수정 필요
 		}
 	}
 	StartSolarAverageScheduler(context.Background())

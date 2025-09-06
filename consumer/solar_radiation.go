@@ -73,15 +73,15 @@ func SaveSolarRadiationJSON(ctx context.Context) error {
 		return fmt.Errorf("no data found up to backoff=%dh (start tm=%s, stn=%s)", cfg.BackoffHours, startTM, cfg.Station)
 	}
 
-	// ✅ 평균 일사량 계산 (null 제외; 즉 음수 원데이터 제외)
 	avg, n := averageSI(all)
+
 	conf.KMAAverage = avg
+
 	if n == 0 {
 		fmt.Println("[WARN] no valid SI values; KMAAverage set to 0")
 	} else {
-		fmt.Printf("[OK] KMAAverage=%.6f (N=%d valid records)\n", avg, n)
+		fmt.Printf("[RADIATION] N = %d, n=%d(valid data)\n", len(all), n)
 	}
-
 	// 기록용 JSON 저장
 	out := cfg.OutputPath
 	if out == "" {
@@ -91,13 +91,13 @@ func SaveSolarRadiationJSON(ctx context.Context) error {
 		return err
 	}
 
-	fmt.Printf("[OK] %d records saved to %s (tm=%s)\n", len(all), out, usedTM)
+	fmt.Printf("[RADIATION] %d records saved to %s (tm=%s)\n", len(all), out, usedTM)
 
 	fmt.Printf("[REGION] joining %d records (tm=%s)\n", len(all), usedTM)
 	if err := JoinAndAggregateByRegion(all /* []SolarRecord */, usedTM); err != nil {
-		fmt.Printf("[REGION][ERROR] %v\n", err)
+		fmt.Printf("[REGION-ERROR] %v\n", err)
 	} else {
-		fmt.Printf("[REGION] wrote files:\n  - %s\n  - %s\n  - %s\n",
+		fmt.Printf("[REGION] save files:\n  - %s\n  - %s\n  - %s\n",
 			conf.KMAStationRegionOut, conf.KMAJoinedOutPath, conf.KMARegionAggOutPath)
 	}
 
@@ -110,14 +110,14 @@ func SaveSolarRadiationJSON(ctx context.Context) error {
 	)
 	if err != nil {
 		// 실패하면 Step1의 전국 평균값(conf.KMAAverage = avg)을 그대로 유지
-		fmt.Printf("[R0][WARN] compute failed; keep previous average: %v\n", err)
+		fmt.Printf("[R0-ERROR] compute failed; keep previous average: %v\n", err)
 	} else {
-		conf.KMAAverage = r0
+		conf.R_0 = r0
 		unit := "[0,1]"
 		if conf.EnableInverse {
 			unit = "MJ/m^2"
 		}
-		fmt.Printf("[R0][OK] R0=%.6f %s  (q*=%.6f, q10=%.6f, q90=%.6f, regions_used=%d, B=%.6f)\n",
+		fmt.Printf("[R0] %.6f %s (q*=%.6f, q10=%.6f, q90=%.6f, regions_used=%d, B=%.6f)\n",
 			r0, unit, qstar, q10, q90, used, conf.Bscale)
 	}
 

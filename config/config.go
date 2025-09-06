@@ -35,13 +35,13 @@ var (
 	KMAStationDefault = ""                                                      // 기본 전체 지점 조회
 	KMABackoffHours   = 3                                                       // 직전 정시부터 최대 3시간 과거 자동 탐색
 	KMAOutputPath     = "solar_radiation.json"                                  // 원본 관측치 저장 경로
-	KMAAverage        float64                                                   // 실시간 평균 일사량 값 저장
 
 	// ------------------ 권역 기반 산출용 경로 ------------------
 	KMAStationsPath     = "solar_stations.json"             // 지점 메타 정보(주소/지점명)
 	KMAJoinedOutPath    = "solar_radiation_joined.json"     // 관측치 + 메타 조인 결과
 	KMARegionAggOutPath = "solar_radiation_region_agg.json" // 권역별 집계 결과
 	KMAStationRegionOut = "solar_station_regions.json"      // 지점→권역 매핑 테이블
+	KMAAverage          float64                             // 실시간 전국 원시 일사량 평균 값 저장
 
 	// 권역 스킴 (예: "Sido17" = 시·도 단위, "Macro6" = 수도권/강원권/충청권/호남권/영남권/제주권)
 	RegionScheme = "Sido17"
@@ -49,9 +49,9 @@ var (
 	// ---------------- 기본 보상에 대한 수식 사용 ====================
 	EnableInverse = true
 	Bscale        = 1.0
-
-	Q_L = 0.10
-	Q_H = 0.90
+	R_0           float64
+	Q_L           = 0.10
+	Q_H           = 0.90
 
 	RequestedRegions = map[string]bool{
 		"서울특별시":   true,

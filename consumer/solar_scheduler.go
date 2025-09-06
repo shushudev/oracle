@@ -39,9 +39,9 @@ func loadWithTimeout(parent context.Context, d time.Duration) {
 	ctx, cancel := context.WithTimeout(parent, d)
 	defer cancel()
 	if err := SaveSolarRadiationJSON(ctx); err != nil {
-		log.Printf("[WARN] KMA average load failed: %v", err)
+		log.Printf("[ERROR] Radiation data update failed: %v", err)
 	} else {
-		log.Printf("[OK] KMAAverage updated")
+		log.Printf("[UPDATE] Success to Update")
 	}
 }
 
