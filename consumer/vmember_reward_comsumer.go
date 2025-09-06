@@ -23,7 +23,7 @@ func StartVMemberRewardConsumer(db *sql.DB, writer *kafka.Writer) error {
 		if err != nil {
 			log.Printf("[WARN] initial KMA average load failed: %v", err)
 		} else {
-			log.Printf("[R0] %.6f", config.R_0) 
+			log.Printf("[R0] Base vote Reward : %.6f", config.R_0)
 		}
 	}
 	StartSolarAverageScheduler(context.Background())

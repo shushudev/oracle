@@ -29,7 +29,7 @@ func StartSolarAverageScheduler(ctx context.Context) {
 
 	// 1) “즉시 실행”을 하지 말고, 다음 HH:10까지 기다린다.
 	sleep := untilNextTopPlus10(time.Now())
-	log.Printf("[SCHED] first run aligned: sleeping %v until next :10", sleep)
+	//log.Printf("[SCHED] first run aligned: sleeping %v until next :10", sleep)
 
 	timer := time.NewTimer(sleep)
 	defer timer.Stop()
