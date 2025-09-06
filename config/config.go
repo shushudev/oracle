@@ -47,7 +47,7 @@ var (
 	RegionScheme = "Sido17"
 
 	// ---------------- 기본 보상에 대한 수식 사용 ====================
-	EnableInverse = false
+	EnableInverse = true
 	Bscale        = 1.0
 
 	Q_L = 0.10
