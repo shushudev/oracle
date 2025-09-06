@@ -24,6 +24,7 @@ func main() {
 	accountCreateWriter := producer.NewAccounCreatetWriter()
 	vmMemberWriter := producer.InitRewardProducer()
 	txHashWriter := producer.NewTxHashWriter()
+	collateralsWriter := producer.NewCollateralsWriter()
 
 	go producer.StartUserMonitor(database, voteWriter)
 
@@ -53,6 +54,7 @@ func main() {
 	go consumer.StartVMemberRewardConsumer(database, vmMemberWriter) // 서명자 보상
 	go consumer.StartTxHashConsumer(database)                        // tx hash값 저장
 	go consumer.StartRequestTxHashConsumer(database, txHashWriter)
+	go consumer.StartCollateralsConsumer(database, collateralsWriter) // REC 등록, 담보 예치
 	log.Println("Server running on :3001")
 	log.Fatal(http.ListenAndServe(":3001", nil))
 	select {}

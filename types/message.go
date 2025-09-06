@@ -79,3 +79,31 @@ type MemberRewardOutputMessage struct {
 type TxHashRequest struct {
 	Address string `json:"user_address"`
 }
+
+type RECMeta struct {
+	FacilityID       string `json:"facility_id"`
+	FacilityName     string `json:"facility_name"`
+	Location         string `json:"location"`
+	TechnologyType   string `json:"technology_type"`   // 발전원
+	CapacityMW       string `json:"capacity_mw"`       // 설비용량
+	RegistrationDate string `json:"registration_date"` // i-REC 등록 승인일
+
+	CertifiedId         string `json:"certified_id"`
+	IssueDate           string `json:"issue_date"`
+	GenerationStartDate string `json:"generation_start_date"`
+	GenerationEndDate   string `json:"generation_end_date"`
+	MeasuredVolumeMWh   string `json:"measured_volume_MWh"`
+	RetiredDate         string `json:"retired_date"`
+	RetirementPurpose   string `json:"retirement_purpose"`
+	Status              string `json:"status"`
+	Timestamp           string `json:"timestamp"`
+}
+
+type CollateralMessage struct {
+	REC string `json:"rec"`
+}
+
+type BurnMessage struct {
+	Address string `json:"address"`
+	Stable  string `json:"stable"`
+}
