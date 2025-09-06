@@ -36,19 +36,29 @@ func StartSolarAverageScheduler(ctx context.Context) {
 
 	select {
 	case <-ctx.Done():
-		log.Printf("[SCHED] canceled before first run")
+		//log.Printf("[SCHED] canceled before first run")
 		return
 	case <-timer.C:
 	}
 
 	// 2) 첫 실행: 여기서부터 1시간 주기 (:10 기준 고정)
 	run := func() {
+
+		now := time.Now().In(kst())
+		tm := nearestPastHourKST(now) // 파이프라인이 사용할 TM(직전 정시)
 		// 내부에서 SaveSolarRadiationJSON이 tm=직전정시로 파이프라인 실행
 		if err := SaveSolarRadiationJSON(ctx); err != nil {
 			log.Printf("[SCHED] pipeline error: %v", err)
 		}
-	}
 
+		log.Printf("[UPDATE] tick=%s, tm=%s — START",
+			now.Format("2006-01-02 15:04:05"), tm)
+
+		if err := SaveSolarRadiationJSON(ctx); err != nil {
+			log.Printf("[UPDATE] tm=%s — FAIL: %v", tm, err)
+			return
+		}
+	}
 	run() // 첫 실행
 
 	ticker := time.NewTicker(1 * time.Hour) // HH:10 기준으로 1시간마다 실행
