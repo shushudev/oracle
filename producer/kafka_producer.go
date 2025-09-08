@@ -56,6 +56,14 @@ func NewCollateralsWriter() *kafka.Writer {
 		Balancer: &kafka.LeastBytes{},
 	}
 }
+
+func NewBurnWriter() *kafka.Writer {
+	return &kafka.Writer{
+		Addr:     kafka.TCP(config.KafkaBrokers...),
+		Topic:    config.TopicBurnProducer,
+		Balancer: &kafka.LeastBytes{},
+	}
+}
 func InitRewardProducer() *kafka.Writer {
 	RewardProducer = &kafka.Writer{
 		Addr:     kafka.TCP(config.KafkaBrokers...),
