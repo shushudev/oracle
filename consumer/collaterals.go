@@ -58,7 +58,7 @@ func HandleCollaterals(msg []byte, db *sql.DB, writer *kafka.Writer) {
 	query := `
 		INSERT INTO Collaterals (
 			facility_id, facility_name, location, technology_type, capacity_mw,
-			registration_date, certified_id, issue_data,
+			registration_date, certified_id, issue_date,
 			generation_start_date, generation_end_date, measured_volume_mwh,
 			retired_date, retirement_purpose, status, timestamp
 		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
