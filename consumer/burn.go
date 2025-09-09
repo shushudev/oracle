@@ -78,7 +78,7 @@ func HandleBurn(msg []byte, db *sql.DB, writer *kafka.Writer) {
 	// 2. Collaterals에서 count 개수 조회
 	querySelect := fmt.Sprintf(`
 		SELECT facility_id, facility_name, location, technology_type, capacity_mw,
-		       registration_date, certified_id, issue_data,
+		       registration_date, certified_id, issue_date,
 		       generation_start_date, generation_end_date, measured_volume_mwh,
 		       retired_date, retirement_purpose, status, timestamp
 		FROM Collaterals
