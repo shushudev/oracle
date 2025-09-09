@@ -120,7 +120,7 @@ func HandleCollaterals(msg []byte, db *sql.DB, writer *kafka.Writer) {
 		// 차이만큼 예치 요청
 		diff := dbCount - totalAmount
 		alert := types.CollateralMessage{
-			REC: fmt.Sprintf("%d", diff),
+			REC: fmt.Sprintf("%dstake", diff), // ← stake 단위 붙이기
 		}
 
 		encoded, err := json.Marshal(alert)
