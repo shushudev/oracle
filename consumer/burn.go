@@ -1,7 +1,6 @@
 package consumer
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -10,7 +9,6 @@ import (
 	"oracle/types"
 
 	"github.com/IBM/sarama"
-	"github.com/segmentio/kafka-go"
 )
 
 type BurnMessage struct {
@@ -18,7 +16,7 @@ type BurnMessage struct {
 	Stable  string `json:"stable"`
 }
 
-func StartBurnConsumer(db *sql.DB, writer *kafka.Writer) {
+func StartBurnConsumer(db *sql.DB, producer sarama.SyncProducer) {
 	fmt.Println("[Kafka: Burn] StartBurnConsumer 시작됨")
 
 	brokers := config.KafkaBrokers
@@ -52,14 +50,15 @@ func StartBurnConsumer(db *sql.DB, writer *kafka.Writer) {
 
 			// stable에 "err"가 없을 때만 실행
 			if burnMsg.Stable != "err" {
-				HandleBurn(msg.Value, db, writer)
+				HandleBurn(msg.Value, db, producer)
 			} else {
 				log.Printf("[Burn] stable 필드에 'err' 발견 → 처리 스킵")
 			}
 		}
 	}()
 }
-func HandleBurn(msg []byte, db *sql.DB, writer *kafka.Writer) {
+
+func HandleBurn(msg []byte, db *sql.DB, producer sarama.SyncProducer) {
 	// 1. BurnMessage 파싱
 	var burnMsg BurnMessage
 	if err := json.Unmarshal(msg, &burnMsg); err != nil {
@@ -124,22 +123,25 @@ func HandleBurn(msg []byte, db *sql.DB, writer *kafka.Writer) {
 		return
 	}
 
-	// 3. Kafka로 반환
+	// 3. Kafka로 반환 (Sarama Producer 사용)
 	for _, rec := range recs {
 		bytes, err := json.Marshal(rec)
 		if err != nil {
 			log.Printf("[Burn] JSON Marshal 실패: %v\n", err)
 			continue
 		}
-		err = writer.WriteMessages(
-			context.Background(),
-			kafka.Message{Value: bytes},
-		)
+
+		message := &sarama.ProducerMessage{
+			Topic: config.TopicBurnProducer,
+			Value: sarama.ByteEncoder(bytes),
+		}
+
+		partition, offset, err := producer.SendMessage(message)
 		if err != nil {
 			log.Printf("[Burn] Kafka 메시지 전송 실패: %v\n", err)
 			continue
 		}
-		log.Printf("[Burn] 라이트노드로 REC 반환 완료: %+v\n", rec)
+		log.Printf("[Burn] 라이트노드로 REC 반환 완료 (partition=%d, offset=%d, FacilityID=%s)", partition, offset, rec.FacilityID)
 
 		// 4. DELETE 처리
 		queryDelete := `DELETE FROM Collaterals WHERE facility_id = $1 AND certified_id = $2`

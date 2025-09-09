@@ -1,7 +1,6 @@
 package consumer
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -10,12 +9,13 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"oracle/config"
 	"oracle/model"
 	"strconv"
 
 	"oracle/types"
 
-	"github.com/segmentio/kafka-go"
+	"github.com/IBM/sarama"
 )
 
 func fetchExpectedIrradiance(lat, lon float64, timestamp string) float64 {
@@ -53,7 +53,7 @@ func LookupAddressFromDB(db *sql.DB, DeviceID string) string {
 	return address
 }
 
-func HandleMappingRequest(msg []byte, db *sql.DB, writer *kafka.Writer) {
+func HandleMappingRequest(msg []byte, db *sql.DB, producer sarama.SyncProducer) {
 	var req types.MappingRequest
 	if err := json.Unmarshal(msg, &req); err != nil {
 		log.Printf("[Mapping] JSON decode error: %v\n", err)
@@ -72,18 +72,27 @@ func HandleMappingRequest(msg []byte, db *sql.DB, writer *kafka.Writer) {
 		SenderID: req.SenderID,
 	}
 
-	respBytes, _ := json.Marshal(resp)
+	respBytes, err := json.Marshal(resp)
+	if err != nil {
+		log.Printf("[Mapping] JSON marshal error: %v\n", err)
+		return
+	}
 
-	err := writer.WriteMessages(context.Background(), kafka.Message{
-		Key:   []byte(req.DeviceID),
-		Value: respBytes,
-	})
+	// Sarama ProducerMessage 생성
+	message := &sarama.ProducerMessage{
+		Topic: config.TopicDeviceIdToAddressProducer,
+		Key:   sarama.ByteEncoder([]byte(req.DeviceID)),
+		Value: sarama.ByteEncoder(respBytes),
+	}
+
+	partition, offset, err := producer.SendMessage(message)
 	if err != nil {
 		log.Printf("❌ Kafka publish error: %v\n", err)
 		return
 	}
 
-	log.Printf("[Mapping] device_id=%s → address=%s", req.DeviceID, address)
+	log.Printf("[Mapping] device_id=%s → address=%s (partition=%d, offset=%d)",
+		req.DeviceID, address, partition, offset)
 }
 
 // 인구 밀도 조사 api
