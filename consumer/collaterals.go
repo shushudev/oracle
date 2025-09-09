@@ -12,11 +12,9 @@ import (
 	"strconv"
 
 	"github.com/IBM/sarama"
-
-	"github.com/segmentio/kafka-go"
 )
 
-func StartCollateralsConsumer(db *sql.DB, writer *kafka.Writer) {
+func StartCollateralsConsumer(db *sql.DB, producer sarama.SyncProducer) {
 	fmt.Println("[Kafka: Collaterals] StartCollateralsConsumer 시작됨")
 
 	brokers := config.KafkaBrokers
@@ -42,12 +40,12 @@ func StartCollateralsConsumer(db *sql.DB, writer *kafka.Writer) {
 			fmt.Printf("[Kafka: Collaterals] 수신 메시지: %s\n", string(msg.Value))
 
 			// 메시지를 처리하는 기존 로직 호출
-			HandleCollaterals(msg.Value, db, writer)
+			HandleCollaterals(msg.Value, db, producer)
 		}
 	}()
 }
 
-func HandleCollaterals(msg []byte, db *sql.DB, writer *kafka.Writer) {
+func HandleCollaterals(msg []byte, db *sql.DB, producer sarama.SyncProducer) {
 	var data types.RECMeta
 	if err := json.Unmarshal(msg, &data); err != nil {
 		log.Printf("[Collaterals] JSON decode error: %v\n", err)
@@ -120,7 +118,7 @@ func HandleCollaterals(msg []byte, db *sql.DB, writer *kafka.Writer) {
 		// 차이만큼 예치 요청
 		diff := dbCount - totalAmount
 		alert := types.CollateralMessage{
-			REC: fmt.Sprintf("%dstake", diff), // ← stake 단위 붙이기
+			REC: fmt.Sprintf("%dstake", diff), // stake 단위 붙이기
 		}
 
 		encoded, err := json.Marshal(alert)
@@ -129,14 +127,17 @@ func HandleCollaterals(msg []byte, db *sql.DB, writer *kafka.Writer) {
 			return
 		}
 
-		producerMsg := kafka.Message{
-			Value: encoded,
+		message := &sarama.ProducerMessage{
+			Topic: config.TopicCollateralsProducer,
+			Value: sarama.ByteEncoder(encoded),
 		}
 
-		if err := writer.WriteMessages(nil, producerMsg); err != nil {
-			log.Printf("[Collaterals] Kafka 전송 실패: %v\n", err)
-		} else {
-			log.Printf("[Collaterals] Kafka 담보 예치 메시지 전송 완료: %s", string(encoded))
+		partition, offset, err := producer.SendMessage(message)
+		if err != nil {
+			log.Printf("[Kafka: Collaterals] 메시지 전송 실패: %v", err)
+			return
 		}
+
+		log.Printf("[Kafka: Collaterals] 메시지 전송 완료 (partition=%d, offset=%d)", partition, offset)
 	}
 }

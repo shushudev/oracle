@@ -1,8 +1,10 @@
 package producer
 
 import (
+	"fmt"
 	"oracle/config"
 
+	"github.com/IBM/sarama"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -75,4 +77,17 @@ func InitRewardProducer() *kafka.Writer {
 		Balancer: &kafka.LeastBytes{},
 	}
 	return RewardProducer
+}
+
+func NewSaramaProducer(brokers []string) (sarama.SyncProducer, error) {
+	config := sarama.NewConfig()
+	config.Producer.RequiredAcks = sarama.WaitForAll // 모든 ISR ack
+	config.Producer.Retry.Max = 5                    // 재시도 횟수
+	config.Producer.Return.Successes = true          // 성공시 채널 반환
+
+	producer, err := sarama.NewSyncProducer(brokers, config)
+	if err != nil {
+		return nil, fmt.Errorf("sarama producer 생성 실패: %v", err)
+	}
+	return producer, nil
 }
