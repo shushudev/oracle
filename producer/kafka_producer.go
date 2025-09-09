@@ -50,8 +50,12 @@ func NewTxHashWriter() *kafka.Writer {
 }
 
 func NewCollateralsWriter() *kafka.Writer {
+	if len(config.KafkaBrokers) == 0 {
+		panic("KafkaBrokers is empty!")
+	}
+
 	return &kafka.Writer{
-		Addr:     kafka.TCP(config.KafkaBrokers...),
+		Addr:     kafka.TCP(config.KafkaBrokers...), // host:port 형태 필수
 		Topic:    config.TopicCollateralsProducer,
 		Balancer: &kafka.LeastBytes{},
 	}
