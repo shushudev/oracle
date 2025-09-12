@@ -11,8 +11,7 @@ var (
 	TopicRequestVMemberReward     = "request-vote-member-topic" // 풀노드 -> 오라클 (서명자 보상 결과 전송)
 	TopicTxHash                   = "tx-hash-topic"
 	TopicRequestTxHash            = "request-tx-hash-topic"
-	TopicCollateralsResistration  = "collaterals-registration-topic" // 라이트노드 -> 오라클 담보 REC 등록
-	TopicBurnResult               = "result-burn-topic"              // 풀노드 -> 오라클 소각 확인
+
 	// Kafka Topic Producer
 	TopicDeviceIdToAddressProducer = "device-address-topic"
 	TopicVoteMemberProducer        = "user-count-topic"
@@ -20,8 +19,6 @@ var (
 	TopicCreateAccountProducer     = "create-address-topic"
 	TopicResultVMemberReward       = "result-vote-member-reward" // 오라클 -> 풀노드 (서명자 리스트 받기)
 	TopicResultTxhashProducer      = "result-tx-hash-topic"      // 오라클 -> 라이트 노드
-	TopicCollateralsProducer       = "request-collaterals-topic" // 오라클 -> 풀노드 담보 등록
-	TopicBurnProducer              = "response-rec-topic"        // 오라클 -> 라이트노드 REC 반환
 
 	// Kafka Group
 	GroupVote              = "vote-member-group"

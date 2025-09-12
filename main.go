@@ -58,8 +58,6 @@ func main() {
 	go consumer.StartVMemberRewardConsumer(database, vmMemberWriter) // 서명자 보상
 	go consumer.StartTxHashConsumer(database)                        // tx hash값 저장
 	go consumer.StartRequestTxHashConsumer(database, txHashWriter)
-	go consumer.StartCollateralsConsumer(database, writer) // REC 등록, 담보 예치
-	go consumer.StartBurnConsumer(database, writer)        // 소각 후 REC 반환
 	log.Println("Server running on :3001")
 	log.Fatal(http.ListenAndServe(":3001", nil))
 	select {}
