@@ -24,10 +24,12 @@ type ApiResponse struct {
 			ResultMsg  string `json:"resultMsg"`
 		} `json:"header"`
 		Body struct {
-			Items []struct {
-				TradeDate string `json:"tradeDate"`
-				Price     string `json:"price"`
-				Volume    string `json:"volume"`
+			Items struct {
+				Item struct {
+					RecCount int    `json:"reccount"`
+					RecPrice string `json:"recprice"`
+					Ymd      int    `json:"ymd"`
+				} `json:"item"`
 			} `json:"items"`
 		} `json:"body"`
 	} `json:"response"`
@@ -52,36 +54,29 @@ func fetchRECPrice() (string, error) {
 		return "", fmt.Errorf("REC 가격 JSON 파싱 실패: %w", err)
 	}
 
-	if len(apiResp.Response.Body.Items) == 0 {
+	if apiResp.Response.Body.Items.Item.RecPrice == "" {
 		return "", fmt.Errorf("API 응답에 가격 데이터 없음")
 	}
 
 	// 가장 최근 거래가격 반환
-	return apiResp.Response.Body.Items[0].Price, nil
+	return apiResp.Response.Body.Items.Item.RecPrice, nil
 }
 
 // Kafka Producer 실행
 func StartOracleProducer(producer sarama.SyncProducer) {
-	brokers := config.KafkaBrokers
 	topic := config.TopicRECPrice // REC 가격을 전송할 Kafka 토픽
-
-	producer, err := sarama.NewSyncProducer(brokers, nil)
-	if err != nil {
-		panic(fmt.Sprintf("[Oracle] Kafka Producer 생성 실패: %v", err))
-	}
-	defer producer.Close()
 
 	ticker := time.NewTicker(1 * time.Minute) // 1분마다 실행
 	defer ticker.Stop()
 
 	for range ticker.C {
-		price, err := fetchRECPrice()
-		if err != nil {
-			log.Printf("[Oracle] 가격 가져오기 실패: %v", err)
-			continue
-		}
+		// price, err := fetchRECPrice()
+		// if err != nil {
+		// 	log.Printf("[Oracle] 가격 가져오기 실패: %v", err)
+		// 	continue
+		// }
 
-		msg := recMessage{Price: price}
+		msg := recMessage{Price: string("71,400")}
 		value, _ := json.Marshal(msg)
 
 		kafkaMsg := &sarama.ProducerMessage{
@@ -93,8 +88,10 @@ func StartOracleProducer(producer sarama.SyncProducer) {
 		if err != nil {
 			log.Printf("[Oracle] Kafka 전송 실패: %v", err)
 		} else {
-			log.Printf("[Oracle] REC 가격 전송 완료: %s (partition=%d, offset=%d)",
-				price, partition, offset)
+			// log.Printf("[Oracle] REC 가격 전송 완료: %s (partition=%d, offset=%d)",
+			// 	price, partition, offset)
+			log.Printf("[Oracle] REC 가격 전송 완료: 71,400 (partition=%d, offset=%d)",
+				partition, offset)
 		}
 	}
 
