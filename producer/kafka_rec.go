@@ -76,7 +76,7 @@ func StartOracleProducer(producer sarama.SyncProducer) {
 		// 	continue
 		// }
 
-		msg := recMessage{Price: string("71400")}
+		msg := recMessage{Price: string("1000")}
 		value, _ := json.Marshal(msg)
 
 		kafkaMsg := &sarama.ProducerMessage{
@@ -90,7 +90,7 @@ func StartOracleProducer(producer sarama.SyncProducer) {
 		} else {
 			// log.Printf("[Oracle] REC 가격 전송 완료: %s (partition=%d, offset=%d)",
 			// 	price, partition, offset)
-			log.Printf("[Oracle] REC 가격 전송 완료: 71,400 (partition=%d, offset=%d)",
+			log.Printf("[Oracle] REC 가격 전송 완료: 1000 (partition=%d, offset=%d)",
 				partition, offset)
 		}
 	}
