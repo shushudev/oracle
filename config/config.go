@@ -19,6 +19,7 @@ var (
 	TopicCreateAccountProducer     = "create-address-topic"
 	TopicResultVMemberReward       = "result-vote-member-reward" // 오라클 -> 풀노드 (서명자 리스트 받기)
 	TopicResultTxhashProducer      = "result-tx-hash-topic"      // 오라클 -> 라이트 노드
+	TopicRECPrice                  = "rec-price-topic"           // 오라클 -> 라이트 노드
 
 	// Kafka Group
 	GroupVote              = "vote-member-group"
