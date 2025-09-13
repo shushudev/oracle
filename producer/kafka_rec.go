@@ -76,7 +76,7 @@ func StartOracleProducer(producer sarama.SyncProducer) {
 		// 	continue
 		// }
 
-		msg := recMessage{Price: string("71,400")}
+		msg := recMessage{Price: string("71400")}
 		value, _ := json.Marshal(msg)
 
 		kafkaMsg := &sarama.ProducerMessage{
