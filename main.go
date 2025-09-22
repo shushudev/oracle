@@ -59,6 +59,7 @@ func main() {
 	go consumer.StartTxHashConsumer(database)                        // tx hash값 저장
 	go consumer.StartRequestTxHashConsumer(database, txHashWriter)
 	go producer.StartOracleProducer(writer)
+	go consumer.StartBlockCreatorConsumer(database, writer)
 	log.Println("Server running on :3001")
 	log.Fatal(http.ListenAndServe(":3001", nil))
 	select {}

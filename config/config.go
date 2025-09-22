@@ -11,6 +11,7 @@ var (
 	TopicRequestVMemberReward     = "request-vote-member-topic" // 풀노드 -> 오라클 (서명자 보상 결과 전송)
 	TopicTxHash                   = "tx-hash-topic"
 	TopicRequestTxHash            = "request-tx-hash-topic"
+	TopicContributors             = "send-contributors" // 풀노드 -> 기여자 리스트 전송
 
 	// Kafka Topic Producer
 	TopicDeviceIdToAddressProducer = "device-address-topic"
@@ -20,6 +21,7 @@ var (
 	TopicResultVMemberReward       = "result-vote-member-reward" // 오라클 -> 풀노드 (서명자 리스트 받기)
 	TopicResultTxhashProducer      = "result-tx-hash-topic"      // 오라클 -> 라이트 노드
 	TopicRECPrice                  = "rec-price-topic"           // 오라클 -> 라이트 노드
+	TopicBlockCreator              = "block-creator"             // 블록 생성사 선출 결과
 
 	// Kafka Group
 	GroupVote              = "vote-member-group"
