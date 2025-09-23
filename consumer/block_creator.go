@@ -172,7 +172,6 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 				ps[i].f = acc
 			}
 			ps[len(ps)-1].f = 1.0 // 수치오차 보호
-
 			if debugRouletteOn() {
 				fmt.Println("[Roulette] ===== Candidate Table =====")
 				fmt.Printf("[Roulette] Beta=%.3f  E=%.6f  S=%.6f  (eps=1e-12)\n", beta, E, S)
@@ -238,7 +237,6 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 	return nil
 }
 
-// Dry-run: 오직 오라클 코드만으로 룰렛휠 실행 (DB/Kafka/풀노드 전혀 사용 안 함)
 func DryRunRoulette(contributors []Contributor, voteMap map[string]float64, beta float64, seedMaterial string) (string, float64, float64) {
 	// 1) 주소 및 에너지 합
 	addrs := make([]string, 0, len(contributors))
