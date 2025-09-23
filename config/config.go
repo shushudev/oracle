@@ -68,4 +68,6 @@ var (
 		"전라북도":    true,
 		"강원도":     true,
 	}
+	BlockSelectAlpha = 1.0
+	BlockSelectBeta  = 1.0
 )
