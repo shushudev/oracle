@@ -43,7 +43,13 @@ type BlockCreatorMsg struct {
 // - w_i = β·x_i + (1-β)·r_i 기반 룰렛휠로 1명 선발
 // - 결과를 TopicBlockCreator로 송신
 func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
-
+	// [SCHEMA BOOTSTRAP] main.go를 건드리지 않고 여기서 1회 보장
+	ctxInit, cancelInit := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := dbx.BootstrapTurnTables(ctxInit, db); err != nil {
+		cancelInit()
+		return fmt.Errorf("schema bootstrap failed: %w", err)
+	}
+	cancelInit()
 	cfg := sarama.NewConfig()
 	cfg.Version = sarama.V2_1_0_0
 

@@ -7,6 +7,58 @@ import (
 	"strings"
 )
 
+func BootstrapTurnTables(ctx context.Context, db *sql.DB) error {
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{}) // ReadCommitted 기본 OK
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		} else {
+			err = tx.Commit()
+		}
+	}()
+
+	// 동시 실행 방지: 트랜잭션 잠금. 트랜잭션 종료와 함께 자동 해제됨.
+	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('turn_schema_init'))`); err != nil {
+		return err
+	}
+
+	// 여기서 DDL을 실행한다. (tx로 실행 → 전부 성공/실패 원자화)
+	// 1) turn_result
+	if _, err = tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS turn_result (
+  turn_id     TEXT PRIMARY KEY,
+  fullnode_id TEXT NOT NULL,
+  creator     TEXT NOT NULL,
+  weight      DOUBLE PRECISION NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);`); err != nil {
+		return err
+	}
+
+	// 2) vote_counter_ledger (vote_counter: address, last_time, count 구조 반영)
+	if _, err = tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS vote_counter_ledger (
+  turn_id           TEXT NOT NULL,
+  address           TEXT NOT NULL,
+  before_count      DOUBLE PRECISION NOT NULL,
+  after_count       DOUBLE PRECISION NOT NULL,
+  delta             DOUBLE PRECISION NOT NULL,
+  before_last_time  TIMESTAMPTZ,
+  after_last_time   TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (turn_id, address)
+);
+CREATE INDEX IF NOT EXISTS idx_vcl_turn ON vote_counter_ledger (turn_id);
+CREATE INDEX IF NOT EXISTS idx_vcl_addr ON vote_counter_ledger (address);`); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // 앱 시작 시 1회 호출하여 테이블 보장
 func EnsureTurnTables(ctx context.Context, db *sql.DB) error {
 	const ddl = `
