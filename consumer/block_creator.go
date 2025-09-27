@@ -50,6 +50,7 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 		return fmt.Errorf("schema bootstrap failed: %w", err)
 	}
 	cancelInit()
+
 	cfg := sarama.NewConfig()
 	cfg.Version = sarama.V2_1_0_0
 

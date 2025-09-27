@@ -12,20 +12,14 @@ func BootstrapTurnTables(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		} else {
-			err = tx.Commit()
-		}
-	}()
+	// 커밋 전에 에러나면 롤백, 커밋 성공했으면 no-op
+	defer func() { _ = tx.Rollback() }()
 
-	// 동시 실행 방지: 트랜잭션 잠금. 트랜잭션 종료와 함께 자동 해제됨.
+	// 동시 실행 방지: 트랜잭션 락 (트랜잭션 종료와 함께 자동 해제)
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext('turn_schema_init'))`); err != nil {
 		return err
 	}
 
-	// 여기서 DDL을 실행한다. (tx로 실행 → 전부 성공/실패 원자화)
 	// 1) turn_result
 	if _, err = tx.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS turn_result (
@@ -38,7 +32,7 @@ CREATE TABLE IF NOT EXISTS turn_result (
 		return err
 	}
 
-	// 2) vote_counter_ledger (vote_counter: address, last_time, count 구조 반영)
+	// 2) vote_counter_ledger (vote_counter: address, last_time, count 반영)
 	if _, err = tx.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS vote_counter_ledger (
   turn_id           TEXT NOT NULL,
@@ -56,7 +50,8 @@ CREATE INDEX IF NOT EXISTS idx_vcl_addr ON vote_counter_ledger (address);`); err
 		return err
 	}
 
-	return nil
+	// 여기서 단 한 번만 커밋
+	return tx.Commit()
 }
 
 // 앱 시작 시 1회 호출하여 테이블 보장
@@ -146,10 +141,13 @@ func FinalizeTurnSubsetTx(
 	vals, args := buildValuesPlaceholders(addrs, 1)
 	q := fmt.Sprintf(`
 WITH cand(address) AS (VALUES %s),
+uniq AS (
+  SELECT DISTINCT address FROM cand
+),
 sel AS (
   SELECT v.address, v.count AS before_count, v.last_time AS before_last_time
   FROM vote_counter v
-  JOIN cand c ON c.address = v.address
+  JOIN uniq c ON c.address = v.address
   WHERE v.count <> 0
   FOR UPDATE
 ),
