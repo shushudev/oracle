@@ -69,5 +69,8 @@ var (
 		"강원도":     true,
 	}
 	BlockSelectAlpha = 1.0
-	BlockSelectBeta  = 1.0
+	BlockSelectBeta  = 0.7
+
+	RouletteEps   float64 = 1e-12 // 모든 가중치가 0일 때 경합 방지용 소량
+	MinCandidates int     = 1     // 후보 최소 개수 (필요 시 확장 가능)
 )
