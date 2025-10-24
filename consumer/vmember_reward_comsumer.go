@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
-	"github.com/segmentio/kafka-go"
 
 	"oracle/config"
+	dbx "oracle/db"
 	"oracle/types"
 )
 
-func StartVMemberRewardConsumer(db *sql.DB, writer *kafka.Writer) error {
+func StartVMemberRewardConsumer(db *sql.DB /* writer 제거됨 */) error {
 	{
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		err := SaveSolarRadiationJSON(ctx)
@@ -27,6 +27,7 @@ func StartVMemberRewardConsumer(db *sql.DB, writer *kafka.Writer) error {
 		}
 	}
 	StartSolarAverageScheduler(context.Background())
+
 	cfg := sarama.NewConfig()
 	cfg.Version = sarama.V2_1_0_0
 
@@ -56,7 +57,7 @@ func StartVMemberRewardConsumer(db *sql.DB, writer *kafka.Writer) error {
 				continue
 			}
 
-			// 보상 계산
+			// 보상 계산 (올바른 인자 사용)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			rewardsMap, err := ComputeRewards(ctx, db, req.Validators, DefaultPolicy())
 			cancel()
@@ -65,35 +66,21 @@ func StartVMemberRewardConsumer(db *sql.DB, writer *kafka.Writer) error {
 				continue
 			}
 
-			out := types.MemberRewardOutputMessage{
-				SenderID: req.FullnodeID,
-				Rewards:  rewardsMap,
+			// 송금/응답 전송 대신 vote_counter에 점수 누적
+			upserted := 0
+			for addr, score := range rewardsMap {
+				if score <= 0 {
+					continue
+				}
+				if err := dbx.UpsertVoteCounter(context.Background(), db, addr, score); err != nil {
+					log.Printf("[VMember] vote_counter upsert 실패 addr=%s score=%.8f err=%v", addr, score, err)
+					continue
+				}
+				upserted++
 			}
 
-			body, err := json.Marshal(out)
-			if err != nil {
-				log.Printf("[VMember] 응답 직렬화 실패: %v", err)
-				continue
-			}
-
-			// writer로 Kafka 메시지 전송
-			err = writer.WriteMessages(
-				context.Background(),
-				kafka.Message{
-					Value: body,
-					Headers: []kafka.Header{
-						{Key: "fullnode_id", Value: []byte(req.FullnodeID)},
-						{Key: "ts", Value: []byte(time.Now().UTC().Format(time.RFC3339))},
-					},
-				},
-			)
-			if err != nil {
-				log.Printf("[VMember] 응답 전송 실패: %v", err)
-				continue
-			}
-
-			log.Printf("[VMember] 보상 응답 전송 완료: 대상=%d", len(rewardsMap))
-
+			log.Printf("[VMember] 보상 누적 완료: 대상=%d, fullnode_id=%s, ts=%s",
+				upserted, req.FullnodeID, time.Now().UTC().Format(time.RFC3339))
 		}
 	}()
 	return nil

@@ -79,3 +79,10 @@ type MemberRewardOutputMessage struct {
 type TxHashRequest struct {
 	Address string `json:"user_address"`
 }
+
+type SignatureEvent struct {
+	SigID   string  `json:"sig_id"`  // 서명 유일키(해시 등)
+	Address string  `json:"address"` // 지갑 주소
+	TurnID  string  `json:"turn_id"` // 턴 식별자(예: REC 타임슬롯)
+	Delta   float64 `json:"delta"`   // R0 + 투표가중치 (이번 서명의 가산점)
+}

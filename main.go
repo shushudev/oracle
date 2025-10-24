@@ -20,7 +20,6 @@ func enableCORS(w http.ResponseWriter) {
 func main() {
 	database := db.ConnectDB()
 	accountCreateWriter := producer.NewAccounCreatetWriter()
-	vmMemberWriter := producer.InitRewardProducer()
 	txHashWriter := producer.NewTxHashWriter()
 
 	writer, err := producer.NewSaramaProducer(config.KafkaBrokers)
@@ -51,6 +50,11 @@ func main() {
 		api.VerifyHandler(database)(w, r) // VerifyHandler는 connect/verify.go에 구현
 	})
 
+	go consumer.StartMappingConsumer(database, writer)           // device Id -> address
+	go producer.StartRequestVoteMemberConsumer(database, writer) // 유권자 수 전송
+	go consumer.StartLocationConsumer(database, locationWriter)  // 위치정보 요청
+	go consumer.StartVMemberRewardConsumer(database)             // 서명자 보상
+	go consumer.StartTxHashConsumer(database)                    // tx hash값 저장
 	go consumer.StartMappingConsumer(database, writer)               // device Id -> address
 	go producer.StartRequestVoteMemberConsumer(database, writer)     // 유권자 수 전송
 	go consumer.StartVMemberRewardConsumer(database, vmMemberWriter) // 서명자 보상

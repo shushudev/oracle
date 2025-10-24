@@ -180,7 +180,6 @@ func aggregateByRegion(joined []JoinedObservation) []RegionAggregate {
 			continue
 		}
 		r := strings.TrimSpace(x.Region)
-		// 필요 시 "기타/미분류"도 포함하려면 아래 조건을 완화하세요.
 		if r == "" || r == "UNKNOWN" || r == "기타/미분류" {
 			continue
 		}
