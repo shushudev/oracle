@@ -228,3 +228,33 @@ SELECT $1, u.address, u.before_count, 0, (0 - u.before_count), u.before_last_tim
 	_, err = tx.ExecContext(ctx, q, turnID)
 	return err
 }
+
+func FinalizeTurnNoResetTx(
+	ctx context.Context, db *sql.DB,
+	turnID int64, fullnodeID, winner string, weight float64,
+) (err error) {
+
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		} else {
+			err = tx.Commit()
+		}
+	}()
+
+	// 동일 turn_id 중복 방지 (멱등)
+	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, turnID); err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, `
+        INSERT INTO turn_result (turn_id, fullnode_id, creator, weight)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (turn_id) DO NOTHING
+    `, turnID, fullnodeID, winner, weight)
+	return err
+}
