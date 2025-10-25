@@ -1,10 +1,8 @@
 package connect
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -43,36 +41,5 @@ func ConnectHandler(db *sql.DB, writer *kafka.Writer) http.HandlerFunc {
 			http.Error(w, `{"status":"fail","message":"Failed to insert user data"}`, http.StatusInternalServerError)
 			return
 		}
-
-		// 4 full node에 주소 정보 전달
-		AccountCreateHandler(db, writer, req)
-	}
-}
-
-func AccountCreateHandler(db *sql.DB, writer *kafka.Writer, res types.ConnectRequest) {
-	var req types.AccountRequest
-
-	req.NodeID = res.NodeID
-	req.Address = res.Address
-
-	// JSON 직렬화
-	value, err := json.Marshal(req)
-	if err != nil {
-		fmt.Println("❌ AccountRequest 직렬화 실패:", err)
-		return
-	}
-
-	// Kafka 메시지 생성
-	msg := kafka.Message{
-		Key:   []byte(req.NodeID), // 파티셔닝 기준 (선택 사항)
-		Value: value,
-	}
-
-	// Kafka 토픽으로 전송
-	err = writer.WriteMessages(context.Background(), msg)
-	if err != nil {
-		fmt.Println("[Kafka: Account] 주소 전송 실패:", err)
-	} else {
-		fmt.Println("[Kafka: Account] 주소 전송 성공:", req)
 	}
 }

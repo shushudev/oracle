@@ -19,7 +19,6 @@ func enableCORS(w http.ResponseWriter) {
 
 func main() {
 	database := db.ConnectDB()
-	locationWriter := producer.NewLocationWriter()
 	accountCreateWriter := producer.NewAccounCreatetWriter()
 	txHashWriter := producer.NewTxHashWriter()
 
@@ -53,11 +52,14 @@ func main() {
 
 	go consumer.StartMappingConsumer(database, writer)           // device Id -> address
 	go producer.StartRequestVoteMemberConsumer(database, writer) // 유권자 수 전송
-	go consumer.StartLocationConsumer(database, locationWriter)  // 위치정보 요청
+	go consumer.StartVMemberRewardConsumer(database)             // 서명자 보상
+	go consumer.StartTxHashConsumer(database)                    // tx hash값 저장
+	go consumer.StartMappingConsumer(database, writer)           // device Id -> address
+	go producer.StartRequestVoteMemberConsumer(database, writer) // 유권자 수 전송
 	go consumer.StartVMemberRewardConsumer(database)             // 서명자 보상
 	go consumer.StartTxHashConsumer(database)                    // tx hash값 저장
 	go consumer.StartRequestTxHashConsumer(database, txHashWriter)
-	go producer.StartOracleProducer(writer)
+	// go producer.StartOracleProducer(writer)
 	go consumer.StartBlockCreatorConsumer(database, writer)
 	log.Println("Server running on :3001")
 	log.Fatal(http.ListenAndServe(":3001", nil))

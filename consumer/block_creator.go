@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"sort"
@@ -42,6 +43,14 @@ type BlockCreatorMsg struct {
 // - w_i = β·x_i + (1-β)·r_i 기반 룰렛휠로 1명 선발
 // - 결과를 TopicBlockCreator로 송신
 func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
+	// [SCHEMA BOOTSTRAP] main.go를 건드리지 않고 여기서 1회 보장
+	ctxInit, cancelInit := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := dbx.BootstrapTurnTables(ctxInit, db); err != nil {
+		cancelInit()
+		return fmt.Errorf("schema bootstrap failed: %w", err)
+	}
+	cancelInit()
+
 	cfg := sarama.NewConfig()
 	cfg.Version = sarama.V2_1_0_0
 
@@ -70,14 +79,24 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 				fmt.Printf("[BlockCreator] payload parse fail: %v\n", err)
 				continue
 			}
-			if len(data.Contributors) == 0 {
-				fmt.Println("[BlockCreator] empty contributors")
+
+			voteAddrs, err := FetchVoteAddresses(db) // vote_counter에서 count>0 주소
+			if err != nil {
+				fmt.Println("FetchVoteAddresses err:", err)
+				// 최소 기능 유지: voteAddrs가 nil이면 빈 맵으로 대체
+				voteAddrs = map[string]struct{}{}
+			}
+			eligibleContributors := UnionContributorsWithVoteOnly(data.Contributors, voteAddrs)
+
+			// ★ 합집합 기준으로 검증(빈 기여자 선탈락 금지)
+			if len(eligibleContributors) == 0 {
+				fmt.Println("[BlockCreator] no candidates (contributors ∪ vote-only empty)")
 				continue
 			}
 
-			// 1) 주소 목록
-			addrs := make([]string, 0, len(data.Contributors))
-			for _, c := range data.Contributors {
+			// 1) 주소 목록 (합집합 기준)
+			addrs := make([]string, 0, len(eligibleContributors))
+			for _, c := range eligibleContributors {
 				if c.Address != "" {
 					addrs = append(addrs, c.Address)
 				}
@@ -99,7 +118,7 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 			// 3) x_i = e_i/E, r_i = count_i / sum(count)
 			var E float64
 			energy := make(map[string]float64, len(addrs)) // 단위 상관없음(합으로만 사용)
-			for _, c := range data.Contributors {
+			for _, c := range eligibleContributors {
 				if c.Address == "" {
 					continue
 				}
@@ -114,7 +133,12 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 			for _, a := range addrs {
 				S += scoreMap[a]
 			}
-
+			if E == 0 {
+				fmt.Println("[BlockCreator] note: E==0 (no energy this turn)")
+			}
+			if S == 0 {
+				fmt.Println("[BlockCreator] note: S==0 (no votes among union candidates)")
+			}
 			x := make(map[string]float64, len(addrs))
 			rv := make(map[string]float64, len(addrs))
 			for _, a := range addrs {
@@ -131,10 +155,17 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 			}
 
 			// 4) w_i = β·x_i + (1-β)·r_i + ε  (룰렛휠)
-			const eps = 1e-12
-			beta := 0.7 // 기본값
-			if config.BlockSelectBeta > 0 && config.BlockSelectBeta < 1 {
-				beta = config.BlockSelectBeta
+			// [SAFE] eps/beta를 설정에서 읽고, beta 클램프
+			eps := config.RouletteEps
+			if eps <= 0 {
+				eps = 1e-12
+			}
+			beta := config.BlockSelectBeta
+			if beta < 0 {
+				beta = 0
+			}
+			if beta > 1 {
+				beta = 1
 			}
 
 			type pair struct {
@@ -150,6 +181,10 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 				if w < 0 {
 					w = 0
 				}
+				// (선택) NaN/Inf 방어
+				if math.IsNaN(w) || math.IsInf(w, 0) {
+					w = 0
+				}
 				w += eps
 				ps = append(ps, pair{addr: a, w: w})
 				W += w
@@ -157,6 +192,18 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 			if len(ps) == 0 {
 				fmt.Println("[BlockCreator] no candidates after weighting")
 				continue
+			}
+
+			// [SAFE] 만약 모든 w가 0+eps 수준이라 W가 eps*len(addrs)에 매우 가깝더라도 정상 동작.
+			// 극히 드문 케이스로 W<=0이면 균등 분포로 대체.
+			if W <= 0 {
+				fmt.Println("[BlockCreator] note: W<=0 -> fallback to uniform weights")
+				ps = ps[:0]
+				for _, a := range addrs {
+					w := 1.0 // 균등
+					ps = append(ps, pair{addr: a, w: w})
+				}
+				W = float64(len(addrs))
 			}
 
 			// 5) P_i, F_i 계산 (주소 정렬로 재현성: map 반복 순서 제거)
@@ -208,10 +255,9 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 				}
 			}
 
-			// 8) 당첨자 송신
 			msg := BlockCreatorMsg{
 				Creator:      winner,
-				Contribution: winnerW, // 최종 w_i
+				Contribution: winnerW,
 				FullnodeID:   data.FullnodeID,
 			}
 			payload, err := json.Marshal(msg)
@@ -219,7 +265,6 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 				fmt.Printf("[BlockCreator] marshal failed: %v\n", err)
 				continue
 			}
-
 			out := &sarama.ProducerMessage{
 				Topic: config.TopicBlockCreator,
 				Value: sarama.ByteEncoder(payload),
@@ -230,6 +275,21 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 			} else {
 				fmt.Printf("[BlockCreator] sent → creator=%s w=%.6f seed=%s fullnode=%s\n",
 					msg.Creator, msg.Contribution, seedMaterial, msg.FullnodeID)
+
+				// === [3단계 연결] 송신 성공 시 턴 종료 처리 ===
+				turnID := seedMaterial // 고유 식별자. (한 턴=한 메시지라면 OK)
+
+				ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+				// 합집합 후보만 reset + ledger 기록
+				err2 := dbx.FinalizeTurnSubsetTx(ctx2, db, turnID, data.FullnodeID, winner, winnerW, addrs)
+				// 전체 reset을 원하면 아래로 교체:
+				// err2 := dbx.FinalizeTurnAllTx(ctx2, db, turnID, data.FullnodeID, winner, winnerW)
+				cancel2()
+				if err2 != nil {
+					fmt.Printf("[BlockCreator] finalize-turn failed: %v (turn_id=%s)\n", err2, turnID)
+				} else {
+					fmt.Printf("[BlockCreator] finalize-turn OK (turn_id=%s, N=%d)\n", turnID, len(addrs))
+				}
 			}
 		}
 	}()
@@ -265,6 +325,12 @@ func DryRunRoulette(contributors []Contributor, voteMap map[string]float64, beta
 		S += voteMap[a]
 	}
 
+	if E == 0 {
+		fmt.Println("[BlockCreator] note: E==0 (no energy this turn)")
+	}
+	if S == 0 {
+		fmt.Println("[BlockCreator] note: S==0 (no votes among union candidates)")
+	}
 	// 3) x_i, r_i
 	x := make(map[string]float64, len(addrs))
 	rv := make(map[string]float64, len(addrs))
