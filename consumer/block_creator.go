@@ -15,10 +15,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/IBM/sarama"
-
 	"oracle/config"
 	dbx "oracle/db"
+	"oracle/metrics"
+
+	"github.com/IBM/sarama"
+	"github.com/lib/pq"
 )
 
 func debugRouletteOn() bool { return os.Getenv("DEBUG_ROULETTE") == "1" }
@@ -44,6 +46,16 @@ type BlockCreatorMsg struct {
 // - 결과를 TopicBlockCreator로 송신
 func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 	// [SCHEMA BOOTSTRAP] main.go를 건드리지 않고 여기서 1회 보장
+
+	go func() {
+		if err := metrics.InitAndServe(":9090"); err != nil {
+			fmt.Println("[Metrics] server error:", err)
+		}
+	}()
+	ctxIdx, cancelIdx := context.WithTimeout(context.Background(), 5*time.Second)
+	// turn_id 정수 시퀀스를 쓰는지 여부에 맞게 true/false
+	_ = dbx.EnsureFairnessIndexes(ctxIdx, db, true)
+	cancelIdx()
 	ctxInit, cancelInit := context.WithTimeout(context.Background(), 5*time.Second)
 	if err := dbx.BootstrapTurnTables(ctxInit, db); err != nil {
 		cancelInit()
@@ -206,6 +218,69 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 				W = float64(len(addrs))
 			}
 
+			var stats map[string]struct {
+				WinsInWindow int
+				ExceedTurnID sql.NullInt64
+			}
+
+			if config.FairFeatureOn {
+				// ---- 2-1) 현재 턴 ID 결정 ----
+				// Kafka 파티션 오프셋을 "턴 번호"로 쓰면 일관된 BIGINT 시퀀스를 얻을 수 있음.
+				// (주의) turn_result.turn_id 가 BIGINT 타입이라고 가정.
+				// 만약 turn_id가 TEXT라면, fetchWinStatsForWindow를 created_at 기반 쿼리로 바꿔야 함.
+				currentTurn := int64(m.Offset) // 필요시 +1 해도 무방
+				ctxFair, cancelFair := context.WithTimeout(context.Background(), 2*time.Second)
+				stats, err = fetchWinStatsForWindow(ctxFair, db, currentTurn, config.FairWinWindowN, config.FairWinCapM, addrs)
+				cancelFair()
+				if err != nil {
+					fmt.Println("[Fairness] fetchWinStats error:", err)
+				} else {
+					// addr -> ps index 매핑 (ps에서 w를 바로 업데이트하기 위함)
+					idx := make(map[string]int, len(ps))
+					for i := range ps {
+						idx[ps[i].addr] = i
+					}
+
+					// ---- 2-3) 패널티 적용 (ramp/fixed) ----
+					for a, s := range stats {
+						// 윈도우 내 승리 횟수가 M 초과 & (M+1)번째 최신 승리 턴 존재
+						if s.WinsInWindow > config.FairWinCapM && s.ExceedTurnID.Valid {
+							exceedTurn := s.ExceedTurnID.Int64
+							// R = 남은 패널티 턴수 = K - (currentTurn - exceedTurn)
+							R := config.FairSoftK - int(currentTurn-exceedTurn)
+							if R > 0 {
+								if i, ok := idx[a]; ok {
+									switch config.FairSoftMode {
+									case "fixed":
+										ps[i].w *= config.FairSoftGamma
+									default: // "ramp"
+										ps[i].w *= math.Pow(config.FairSoftGamma, float64(R))
+									}
+								}
+							}
+						}
+					}
+
+					// ---- 2-4) 패널티 적용 후 W 재계산 ----
+					W = 0
+					for i := range ps {
+						// 수치 안정성 보호
+						if ps[i].w < 0 || math.IsNaN(ps[i].w) || math.IsInf(ps[i].w, 0) {
+							ps[i].w = 0
+						}
+						W += ps[i].w
+					}
+					if W <= 0 {
+						// 만약 모든 가중치가 0이 되었다면 균등 분포로 복구
+						for i := range ps {
+							ps[i].w = 1.0
+						}
+						W = float64(len(ps))
+						fmt.Println("[Fairness] note: all-zero after penalty -> uniform fallback")
+					}
+				}
+			}
+			// ============================================================
 			// 5) P_i, F_i 계산 (주소 정렬로 재현성: map 반복 순서 제거)
 			sort.Slice(ps, func(i, j int) bool { return ps[i].addr < ps[j].addr })
 			acc := 0.0
@@ -219,6 +294,7 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 				ps[i].f = acc
 			}
 			ps[len(ps)-1].f = 1.0 // 수치오차 보호
+
 			if debugRouletteOn() {
 				fmt.Println("[Roulette] ===== Candidate Table =====")
 				fmt.Printf("[Roulette] Beta=%.3f  E=%.6f  S=%.6f  (eps=1e-12)\n", beta, E, S)
@@ -238,6 +314,47 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 				}
 				fmt.Println("[Roulette] ============================================================")
 			}
+			pcapTriggered := false
+			
+			if config.EnablePCap {
+				// 1) 캡 적용
+				if pcapTriggered {
+					metrics.FairPcapAppliedGauge.Set(1)
+				} else {
+					metrics.FairPcapAppliedGauge.Set(0)
+				}
+				capped := make([]bool, len(ps))
+				sumCapped := 0.0
+				sumUncapped := 0.0
+				for i := range ps {
+					if ps[i].p > config.Pcap {
+						sumCapped += config.Pcap
+						capped[i] = true
+					} else {
+						sumUncapped += ps[i].p
+					}
+				}
+				if sumCapped > 0 && sumUncapped > 0 {
+					// 2) 잔여 확률 재분배
+					leftover := 1.0 - sumCapped
+					for i := range ps {
+						if capped[i] {
+							ps[i].p = config.Pcap
+						} else {
+							// 비례 재분배
+							ps[i].p = (ps[i].p / sumUncapped) * leftover
+						}
+					}
+					// 3) F_i 재계산
+					acc = 0.0
+					for i := range ps {
+						acc += ps[i].p
+						ps[i].f = acc
+					}
+					ps[len(ps)-1].f = 1.0
+				}
+				// 극단 케이스: 모두 Pcap 이하라면 아무 변화 없음
+			}
 			// 6) 재현 가능한 난수 시드: FullnodeID + topic/partition/offset
 			seedMaterial := fmt.Sprintf("%s:%s:%d:%d", data.FullnodeID, m.Topic, m.Partition, m.Offset)
 			sum := sha256.Sum256([]byte(seedMaterial))
@@ -254,7 +371,50 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 					break
 				}
 			}
-
+			penalized := 0
+			maxPenalty := 1.0
+			for _, a := range addrs {
+				s, ok := stats[a] // fetchWinStatsForWindow 결과(이미 위에서 구함)
+				if ok && s.WinsInWindow > config.FairWinCapM && s.ExceedTurnID.Valid {
+					R := config.FairSoftK - int(int64(m.Offset)-s.ExceedTurnID.Int64)
+					if R > 0 {
+						penalized++
+						// ramp 기준의 이론상 penalty 값 (로그용)
+						p := config.FairSoftGamma
+						if config.FairSoftMode != "fixed" {
+							p = math.Pow(config.FairSoftGamma, float64(R))
+						}
+						if p < maxPenalty {
+							maxPenalty = p
+						}
+					}
+				}
+			}
+			fmt.Printf("[FairnessSummary] turn=%d fullnode=%s winner=%s penalized=%d maxPenalty=%.3f candidates=%d\n",
+				m.Offset, data.FullnodeID, winner, penalized, maxPenalty, len(addrs))
+			if config.FairFeatureOn && stats != nil {
+				penalized := 0
+				maxPenalty := 1.0
+				currentTurn := int64(m.Offset)
+				for _, a := range addrs {
+					if s, ok := stats[a]; ok && s.WinsInWindow > config.FairWinCapM && s.ExceedTurnID.Valid {
+						R := config.FairSoftK - int(currentTurn-s.ExceedTurnID.Int64)
+						if R > 0 {
+							penalized++
+							p := config.FairSoftGamma
+							if config.FairSoftMode != "fixed" {
+								p = math.Pow(config.FairSoftGamma, float64(R))
+							}
+							if p < maxPenalty {
+								maxPenalty = p
+							}
+						}
+					}
+				}
+				metrics.FairPenalizedGauge.Set(float64(penalized))
+				metrics.FairMaxPenaltyGauge.Set(maxPenalty)
+				metrics.FairCandidatesGauge.Set(float64(len(addrs)))
+			}
 			msg := BlockCreatorMsg{
 				Creator:      winner,
 				Contribution: winnerW,
@@ -277,18 +437,14 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 					msg.Creator, msg.Contribution, seedMaterial, msg.FullnodeID)
 
 				// === [3단계 연결] 송신 성공 시 턴 종료 처리 ===
-				turnID := seedMaterial // 고유 식별자. (한 턴=한 메시지라면 OK)
-
+				turnID := int64(m.Offset) // Kafka offset을 turn_id로 사용(정수)
 				ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
-				// 합집합 후보만 reset + ledger 기록
-				err2 := dbx.FinalizeTurnSubsetTx(ctx2, db, turnID, data.FullnodeID, winner, winnerW, addrs)
-				// 전체 reset을 원하면 아래로 교체:
-				// err2 := dbx.FinalizeTurnAllTx(ctx2, db, turnID, data.FullnodeID, winner, winnerW)
+				err2 := dbx.FinalizeTurnNoResetTx(ctx2, db, turnID, data.FullnodeID, winner, winnerW)
 				cancel2()
 				if err2 != nil {
-					fmt.Printf("[BlockCreator] finalize-turn failed: %v (turn_id=%s)\n", err2, turnID)
+					fmt.Printf("[BlockCreator] finalize-turn failed: %v (turn_id=%d)\n", err2, turnID)
 				} else {
-					fmt.Printf("[BlockCreator] finalize-turn OK (turn_id=%s, N=%d)\n", turnID, len(addrs))
+					fmt.Printf("[BlockCreator] finalize-turn OK (turn_id=%d)\n", turnID)
 				}
 			}
 		}
@@ -428,4 +584,48 @@ func DryRunRoulette(contributors []Contributor, voteMap map[string]float64, beta
 	fmt.Printf("[DryRun] WINNER=%s  w=%.8f  P=%.8f  seed=%s  u=%.8f\n",
 		winner, winnerW, winnerP, seedMaterial, u)
 	return winner, winnerW, winnerP
+}
+
+// currentTurn: 현재 턴 ID (int64), addrs: 후보 주소 배열
+func fetchWinStatsForWindow(ctx context.Context, db *sql.DB, currentTurn int64, N, M int, addrs []string) (map[string]struct {
+	WinsInWindow int
+	ExceedTurnID sql.NullInt64
+}, error) {
+	q := `
+WITH wins AS (
+  SELECT creator, turn_id,
+         ROW_NUMBER() OVER (PARTITION BY creator ORDER BY turn_id DESC) AS rn
+    FROM turn_result
+   WHERE turn_id > $1 - $2
+     AND creator = ANY($3)
+)
+SELECT creator,
+       COUNT(*) FILTER (WHERE rn <= $4) AS wins_in_window,
+       MAX(CASE WHEN rn = $4 THEN turn_id END) AS exceed_turn_id
+  FROM wins
+ GROUP BY creator;
+`
+	rows, err := db.QueryContext(ctx, q, currentTurn, N, pq.Array(addrs), M+1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[string]struct {
+		WinsInWindow int
+		ExceedTurnID sql.NullInt64
+	})
+	for rows.Next() {
+		var creator string
+		var wins int
+		var ex sql.NullInt64
+		if err := rows.Scan(&creator, &wins, &ex); err != nil {
+			return nil, err
+		}
+		out[creator] = struct {
+			WinsInWindow int
+			ExceedTurnID sql.NullInt64
+		}{WinsInWindow: wins, ExceedTurnID: ex}
+	}
+	return out, nil
 }

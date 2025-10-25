@@ -73,4 +73,14 @@ var (
 
 	RouletteEps   float64 = 1e-12 // 모든 가중치가 0일 때 경합 방지용 소량
 	MinCandidates int     = 1     // 후보 최소 개수 (필요 시 확장 가능)
+
+	FairFeatureOn  = true   // 전체 기능 ON/OFF 토글
+	FairWinWindowN = 30     // N: 최근 30턴 창
+	FairWinCapM    = 3      // M: 창 내 허용 최대 승수 (초과 시 패널티 시작)
+	FairSoftK      = 3      // K: 패널티 지속 턴수
+	FairSoftGamma  = 0.7    // γ: 감쇠 계수 (0<γ<1) ; ramp는 γ^R, fixed는 γ
+	FairSoftMode   = "ramp" // "ramp" | "fixed"
+
+	EnablePCap = true
+	Pcap       = 0.35
 )
