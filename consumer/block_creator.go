@@ -315,7 +315,7 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 				fmt.Println("[Roulette] ============================================================")
 			}
 			pcapTriggered := false
-			
+
 			if config.EnablePCap {
 				// 1) 캡 적용
 				if pcapTriggered {
