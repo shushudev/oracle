@@ -42,8 +42,9 @@ func DryRunUnionRoulette(db *sql.DB, baseContribs []Contributor, fullnodeID, see
 	// 3) 기존 DryRunRoulette 재사용
 	seedMaterial := fmt.Sprintf("%s:%s", fullnodeID, seedTag)
 	w, ww, pp := DryRunRoulette(candidates, scoreMap, beta, seedMaterial)
-	fmt.Printf("[DryRunUnion] winner=%s w=%.6f P=%.6f candidates=%d\n", w, ww, pp, len(candidates))
-
+	//fmt.Printf("[DryRunUnion] winner=%s w=%.6f P=%.6f candidates=%d\n", w, ww, pp, len(candidates))
+	fmt.Printf("[Select] WINNER=%s  P=%.8f (w=%.6f)  rand=%s  cand=%d  seed=%s\n",
+		w, pp, ww, "-", len(candidates), "-")
 	// (선택) 주소 정렬·표시
 	sort.Strings(addrs)
 	fmt.Println("[DryRunUnion] addrs:", addrs)

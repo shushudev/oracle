@@ -23,6 +23,35 @@ import (
 	"github.com/lib/pq"
 )
 
+type selNodeRow struct {
+	addr string
+	r0   float64 // (1) 서명 기본 기여도
+	re   float64 // (2) 서명 추가 기여도
+	rsig float64 // (3) 최종 서명 기여도 = r0 + re
+	x    float64 // (4) 태양광 기여도 (정규화 x_i)
+	w    float64 // 혼합 가중치 (정규화 전 분자)
+	p    float64 // (5) 최종 확률
+	f    float64 // (룰렛 누적확률 CDF)
+}
+
+func printSelectionHeader(turn int, beta, sumX, sumSig float64) {
+	fmt.Println("[Select] --------------------------------------------------------------")
+	fmt.Printf("[Select] TURN=%d  beta=%.6f  SumX=%.6f  SumSig=%.6f\n", turn, beta, sumX, sumSig)
+	fmt.Printf("[Select] %-44s | %10s %10s %10s %12s %12s %12s\n",
+		"address", "r0", "re", "rsig", "x_i", "w_i", "P_i")
+	fmt.Println("[Select] -------------------------------------------------------------------------------")
+}
+
+func printSelectionRow(r selNodeRow) {
+	fmt.Printf("[Select] %-44s | %10.6f %10.6f %10.6f %12.6f %12.6f %12.8f\n",
+		r.addr, r.r0, r.re, r.rsig, r.x, r.w, r.p)
+}
+
+func printWinner(turn int, seed int64, randU float64, winner selNodeRow, n int) {
+	fmt.Printf("[Select] WINNER=%s  P=%.8f (w=%.6f)  rand=%.8f  cand=%d  seed=%d\n",
+		winner.addr, winner.p, winner.w, randU, n, seed)
+}
+
 func debugRouletteOn() bool { return os.Getenv("DEBUG_ROULETTE") == "1" }
 
 // ---- 메시지 스키마 ----
@@ -295,25 +324,25 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 			}
 			ps[len(ps)-1].f = 1.0 // 수치오차 보호
 
-			if debugRouletteOn() {
-				fmt.Println("[Roulette] ===== Candidate Table =====")
-				fmt.Printf("[Roulette] Beta=%.3f  E=%.6f  S=%.6f  (eps=1e-12)\n", beta, E, S)
-				fmt.Printf("[Roulette] %-44s | %10s %10s %10s %12s %12s %12s\n",
-					"address", "e_i", "x_i", "r_i", "w_i", "P_i", "F_i")
-				fmt.Println("[Roulette] -----------------------------------------------------------------------------------------------")
-				for _, row := range ps {
-					a := row.addr
-					ei := energy[a] // 입력 에너지(단위 무관)
-					xi := x[a]      // 발전 참여도
-					ri := rv[a]     // 서명 참여도
-					wi := row.w     // 최종 가중치
-					Pi := row.p     // 최종 확률
-					Fi := row.f     // 누적 경계
-					fmt.Printf("[Roulette] %-44s | %10.4f %10.6f %10.6f %12.8f %12.8f %12.8f\n",
-						a, ei, xi, ri, wi, Pi, Fi)
-				}
-				fmt.Println("[Roulette] ============================================================")
-			}
+			// if debugRouletteOn() {
+			// 	fmt.Println("[Roulette] ===== Candidate Table =====")
+			// 	fmt.Printf("[Roulette] Beta=%.3f  E=%.6f  S=%.6f  (eps=1e-12)\n", beta, E, S)
+			// 	fmt.Printf("[Roulette] %-44s | %10s %10s %10s %12s %12s %12s\n",
+			// 		"address", "e_i", "x_i", "r_i", "w_i", "P_i", "F_i")
+			// 	fmt.Println("[Roulette] -----------------------------------------------------------------------------------------------")
+			// 	for _, row := range ps {
+			// 		a := row.addr
+			// 		ei := energy[a] // 입력 에너지(단위 무관)
+			// 		xi := x[a]      // 발전 참여도
+			// 		ri := rv[a]     // 서명 참여도
+			// 		wi := row.w     // 최종 가중치
+			// 		Pi := row.p     // 최종 확률
+			// 		Fi := row.f     // 누적 경계
+			// 		fmt.Printf("[Roulette] %-44s | %10.4f %10.6f %10.6f %12.8f %12.8f %12.8f\n",
+			// 			a, ei, xi, ri, wi, Pi, Fi)
+			// 	}
+			// 	fmt.Println("[Roulette] ============================================================")
+			// }
 			pcapTriggered := false
 
 			if config.EnablePCap {
@@ -355,6 +384,41 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 				}
 				// 극단 케이스: 모두 Pcap 이하라면 아무 변화 없음
 			}
+
+			{
+				// 주의: 현재 코드엔 r0/re 분해가 따로 없으므로
+				//      "r0=0, re=rv[a], rsig=re"로 먼저 찍고,
+				//      추후 너의 로직에서 r0/re를 분리하면 그대로 값만 바꿔주면 됨.
+				var sumX, sumSig float64
+				for _, a := range addrs {
+					sumX += x[a]
+					sumSig += rv[a]
+				}
+
+				// 턴 번호는 카프카 오프셋을 이미 "turn" 개념으로 쓰고 있으니 재활용
+				currentTurn := int64(m.Offset)
+				printSelectionHeader(int(currentTurn), beta, sumX, sumSig)
+
+				for _, row := range ps {
+					a := row.addr
+					r0 := 0.0     // (1) 서명 기본 (지금은 분해값 없음 → 0)
+					re := rv[a]   // (2) 서명 추가 (지금은 전체를 re로 간주)
+					rs := r0 + re // (3)
+					xx := x[a]    // (4) 태양광 (정규화 x_i)
+					printSelectionRow(selNodeRow{
+						addr: a, r0: r0, re: re, rsig: rs,
+						x: xx, w: row.w, p: row.p, f: row.f,
+					})
+				}
+
+				// (선택) 합 검증
+				var pSum float64
+				for _, row := range ps {
+					pSum += row.p
+				}
+				fmt.Printf("[Select] p_sum=%.12f\n", pSum)
+			}
+
 			// 6) 재현 가능한 난수 시드: FullnodeID + topic/partition/offset
 			seedMaterial := fmt.Sprintf("%s:%s:%d:%d", data.FullnodeID, m.Topic, m.Partition, m.Offset)
 			sum := sha256.Sum256([]byte(seedMaterial))
@@ -373,6 +437,27 @@ func StartBlockCreatorConsumer(db *sql.DB, producer sarama.SyncProducer) error {
 			}
 			penalized := 0
 			maxPenalty := 1.0
+			{
+				// winner의 p,f도 찾아서 담아 출력
+				winRow := selNodeRow{addr: winner, w: winnerW}
+				for _, v := range ps {
+					if v.addr == winner {
+						winRow.p = v.p
+						winRow.f = v.f
+						break
+					}
+				}
+				// r0/re/rsig/x는 맵에서 복원
+				r0 := 0.0 // (현재 분해 없음)
+				re := rv[winner]
+				rs := r0 + re
+				xx := x[winner]
+				winRow.r0, winRow.re, winRow.rsig, winRow.x = r0, re, rs, xx
+
+				// 현재 턴(오프셋), 시드/난수(u)는 기존 변수 재사용
+				currentTurn := int64(m.Offset)
+				printWinner(int(currentTurn), seed, u, winRow, len(ps))
+			}
 			for _, a := range addrs {
 				s, ok := stats[a] // fetchWinStatsForWindow 결과(이미 위에서 구함)
 				if ok && s.WinsInWindow > config.FairWinCapM && s.ExceedTurnID.Valid {
